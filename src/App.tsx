@@ -14,6 +14,20 @@ import TimeOffPage from './pages/TimeOffPage'
 import ReportsPage from './pages/ReportsPage'
 import SettingsPage from './pages/SettingsPage'
 import TrackingPage from './pages/TrackingPage'
+import AziPage from './pages/AziPage'
+import { canSeeTimeOff, useCurrentUser } from './data/store'
+import { useIsDesktop } from './hooks/useMediaQuery'
+
+/**
+ * Pe telefon rolurile au treburi diferite: operatorul intră direct în lucrările lui,
+ * managerul în calendar. Pe desktop rămâne Dashboard-ul.
+ */
+function Landing() {
+  const me = useCurrentUser()
+  const isDesktop = useIsDesktop()
+  if (isDesktop) return <DashboardPage />
+  return <Navigate to={canSeeTimeOff(me?.role) ? '/programari' : '/azi'} replace />
+}
 
 export default function App() {
   return (
@@ -21,7 +35,8 @@ export default function App() {
       <Routes>
         <Route path="/tracking/:token" element={<TrackingPage />} />
         <Route element={<AppLayout />}>
-          <Route index element={<DashboardPage />} />
+          <Route index element={<Landing />} />
+          <Route path="azi" element={<AziPage />} />
           <Route path="programari" element={<JobsPage />} />
           <Route path="programari/nou" element={<JobNewPage />} />
           <Route path="programari/:id" element={<JobDetailPage />} />
