@@ -1,7 +1,13 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { useMemo, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import { cx, initials } from '@/lib/utils'
-import { ROLE_LABEL, canSeeTimeOff, carName, clientName, useCurrentUser, useStore } from '@/data/store'
+import { ROLE_LABEL, canSeeTimeOff, useCurrentUser, useStore } from '@/data/store'
+import { useIsDesktop } from '@/hooks/useMediaQuery'
+import { MobileHeader } from './mobile/MobileHeader'
+import { SearchOverlay, useGlobalSearch } from './mobile/SearchOverlay'
+import { BottomTabBar } from './mobile/BottomTabBar'
+import { MoreSheet } from './mobile/MoreSheet'
+import { Fab } from './mobile/Fab'
 import {
   IconBell,
   IconBox,
@@ -33,27 +39,7 @@ const NAV = [
 function GlobalSearch() {
   const [q, setQ] = useState('')
   const nav = useNavigate()
-  const { clients, cars, jobs } = useStore()
-
-  const results = useMemo(() => {
-    const s = q.trim().toLowerCase()
-    if (s.length < 2) return []
-    const out: { label: string; sub: string; to: string }[] = []
-    clients.forEach((c) => {
-      const name = clientName(c)
-      if ([name, c.phone, c.vatId, c.cnp].join(' ').toLowerCase().includes(s))
-        out.push({ label: name, sub: c.phone || 'client', to: `/clienti/${c.id}` })
-    })
-    cars.forEach((c) => {
-      if ([carName(c), c.plate, c.vin].join(' ').toLowerCase().includes(s))
-        out.push({ label: carName(c), sub: c.plate, to: `/masini/${c.id}` })
-    })
-    jobs.forEach((j) => {
-      if (j.code.toLowerCase().includes(s))
-        out.push({ label: j.code, sub: 'programare', to: `/programari/${j.id}` })
-    })
-    return out.slice(0, 8)
-  }, [q, clients, cars, jobs])
+  const results = useGlobalSearch(q).slice(0, 8)
 
   return (
     <div className="relative w-full max-w-md">
@@ -92,7 +78,7 @@ function GlobalSearch() {
 function Toasts() {
   const toasts = useStore((s) => s.toasts)
   return (
-    <div className="pointer-events-none fixed right-6 bottom-6 z-[60] flex flex-col gap-2">
+    <div className="pointer-events-none fixed top-3 right-3 left-3 z-[60] flex flex-col gap-2 md:top-auto md:right-6 md:bottom-6 md:left-auto">
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -111,6 +97,32 @@ function Toasts() {
 }
 
 export default function AppLayout() {
+  const isDesktop = useIsDesktop()
+  const nav = useNavigate()
+  const { pathname } = useLocation()
+  const [search, setSearch] = useState(false)
+  const [more, setMore] = useState(false)
+
+  if (isDesktop) return <DesktopShell />
+
+  const showFab = pathname === '/azi' || pathname === '/programari'
+
+  return (
+    <div className="flex h-dvh flex-col">
+      <MobileHeader onOpenSearch={() => setSearch(true)} onOpenMore={() => setMore(true)} />
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+72px)]">
+        <Outlet />
+      </main>
+      {showFab && <Fab label="Programare nouă" onClick={() => nav('/programari/nou')} />}
+      <BottomTabBar onOpenMore={() => setMore(true)} />
+      <MoreSheet open={more} onClose={() => setMore(false)} />
+      <SearchOverlay open={search} onClose={() => setSearch(false)} />
+      <Toasts />
+    </div>
+  )
+}
+
+function DesktopShell() {
   const nav = useNavigate()
   const reset = useStore((s) => s.reset)
   const staff = useStore((s) => s.staff)
