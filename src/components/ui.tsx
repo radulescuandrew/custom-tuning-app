@@ -8,6 +8,8 @@ import type {
 import { useEffect } from 'react'
 import { cx } from '@/lib/utils'
 import { IconX } from './Icons'
+import { Sheet } from './ui/Sheet'
+import { useIsDesktop } from '@/hooks/useMediaQuery'
 
 /* ---------- Button ---------- */
 type BtnVariant = 'primary' | 'ghost' | 'outline' | 'danger' | 'subtle'
@@ -157,14 +159,24 @@ export function Modal({
   footer?: ReactNode
   width?: string
 }) {
+  const isDesktop = useIsDesktop()
+
   useEffect(() => {
-    if (!open) return
+    if (!open || !isDesktop) return
     const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [open, onClose])
+  }, [open, onClose, isDesktop])
 
   if (!open) return null
+
+  if (!isDesktop)
+    return (
+      <Sheet open={open} onClose={onClose} title={title} subtitle={subtitle} footer={footer}>
+        {children}
+      </Sheet>
+    )
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/35 backdrop-blur-[2px]" onClick={onClose} />
