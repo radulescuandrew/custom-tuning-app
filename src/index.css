@@ -1,0 +1,210 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Manrope', system-ui, sans-serif;
+  --font-mono: 'Inconsolata', ui-monospace, monospace;
+
+  /* suprafețe (temă deschisă) */
+  --color-ink-950: #f4f4f6;
+  --color-ink-900: #ffffff;
+  --color-ink-850: #ffffff;
+  --color-ink-800: #ffffff;
+  --color-ink-750: #f1f1f4;
+  --color-ink-700: #e9e9ee;
+
+  --color-line: rgba(15, 17, 26, 0.09);
+  --color-line-strong: rgba(15, 17, 26, 0.16);
+
+  --color-fg: #16161b;
+  --color-fg-dim: #35353d;
+  --color-fg-mute: #5f5f6b;
+  --color-fg-faint: #8a8a97;
+
+  /* customtuning.ro — negru + roșu */
+  --color-brand-400: #c81f1f;
+  --color-brand-500: #e02a2a;
+  --color-brand-600: #bf0000;
+  --color-brand-700: #8f0000;
+
+  --color-ember: #c2681a;
+  --color-mint: #16a06a;
+  --color-sky: #5a6472;
+  --color-rose: #d13a54;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--color-ink-950);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: rgba(224, 42, 42, 0.18);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(15, 17, 26, 0.18);
+    border-radius: 6px;
+    border: 3px solid var(--color-ink-950);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  input,
+  select,
+  textarea,
+  button {
+    font-family: inherit;
+  }
+  input[type='date']::-webkit-calendar-picker-indicator,
+  input[type='time']::-webkit-calendar-picker-indicator {
+    opacity: 0.55;
+    cursor: pointer;
+  }
+}
+
+@utility mono-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+}
+
+@keyframes ctFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility animate-fade {
+  animation: ctFade 0.22s ease-out both;
+}
+
+/* ---------- FullCalendar · temă Custom Tuning ---------- */
+.ct-calendar {
+  --fc-page-bg-color: transparent;
+  --fc-border-color: rgba(15, 17, 26, 0.09);
+  --fc-neutral-bg-color: rgba(15, 17, 26, 0.03);
+  --fc-today-bg-color: rgba(224, 42, 42, 0.05);
+  --fc-now-indicator-color: #e02a2a;
+  --fc-highlight-color: rgba(224, 42, 42, 0.14);
+  --fc-event-selected-overlay-color: rgba(224, 42, 42, 0.14);
+  --fc-small-font-size: 11px;
+}
+/* primirea mașinii: contur punctat, fundal alb; execuția: bloc plin */
+.ct-calendar .ct-ev-primire {
+  border-style: dashed !important;
+  border-width: 1.5px !important;
+  box-shadow: 0 1px 2px rgba(15, 17, 26, 0.06);
+}
+.ct-calendar .ct-ev-executie {
+  border-width: 0 0 0 3px !important;
+}
+.ct-calendar .fc {
+  font-family: var(--font-sans);
+  color: var(--color-fg);
+}
+.ct-calendar .fc .fc-col-header-cell-cushion,
+.ct-calendar .fc .fc-daygrid-day-number,
+.ct-calendar .fc .fc-timegrid-slot-label-cushion,
+.ct-calendar .fc .fc-list-day-text {
+  color: var(--color-fg-mute);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+}
+.ct-calendar .fc .fc-col-header-cell-cushion {
+  text-transform: uppercase;
+  padding: 8px 4px;
+}
+.ct-calendar .fc .fc-day-today .fc-daygrid-day-number {
+  color: var(--color-brand-400);
+  font-weight: 700;
+}
+.ct-calendar .fc .fc-daygrid-day-frame {
+  min-height: 104px;
+}
+.ct-calendar .fc-theme-standard td,
+.ct-calendar .fc-theme-standard th,
+.ct-calendar .fc-theme-standard .fc-scrollgrid {
+  border-color: var(--fc-border-color);
+}
+.ct-calendar .fc-event {
+  border-width: 0 0 0 3px;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.ct-calendar .fc-daygrid-event {
+  margin-top: 2px;
+}
+.ct-calendar .fc .fc-timegrid-slot {
+  height: 30px;
+}
+.ct-calendar .fc .fc-daygrid-more-link {
+  color: var(--color-brand-400);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.ct-calendar .fc .fc-popover {
+  background: var(--color-ink-850);
+  border-color: var(--color-line-strong);
+}
+.ct-calendar .fc .fc-popover-header {
+  background: var(--color-ink-900);
+  color: var(--color-fg);
+}
+.ct-calendar .fc .fc-timegrid-axis-cushion,
+.ct-calendar .fc .fc-daygrid-day-top {
+  color: var(--color-fg-faint);
+}
+.ct-calendar .fc .fc-highlight {
+  border-radius: 6px;
+}
+
+/* Fișa PDF: se printează doar conținutul paginii, fără navigație. */
+@media print {
+  aside,
+  header:has(input[placeholder^='Caută']) {
+    display: none !important;
+  }
+  body,
+  main {
+    background: #fff !important;
+    color: #111 !important;
+    overflow: visible !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  section {
+    border-color: #ddd !important;
+    background: #fff !important;
+    break-inside: avoid;
+  }
+  button {
+    display: none !important;
+  }
+}
