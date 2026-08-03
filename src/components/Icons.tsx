@@ -155,6 +155,37 @@ export const IconSettings = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+export const IconMenu = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </svg>
+)
+
+export const IconDownload = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M12 3v12M7 11l5 5 5-5" />
+    <path d="M4 20h16" />
+  </svg>
+)
+
+export const IconPlay = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M7 4l12 8-12 8z" />
+  </svg>
+)
+
+export const IconStop = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <rect x="6" y="6" width="12" height="12" rx="1.5" />
+  </svg>
+)
+
+export const IconFilter = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M3 5h18l-7 8v6l-4 2v-8z" />
+  </svg>
+)
+
 export const IconWarn = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="M12 4l9 16H3z" />
