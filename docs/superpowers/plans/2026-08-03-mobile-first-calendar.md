@@ -10,6 +10,23 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-03-mobile-first-calendar-design.md`
 
+## Revision · 2026-08-06
+
+Phases 0–2 are implemented and Phase 3 is half-done (`manifest.webmanifest` and the icons exist,
+`InstallPrompt` does not) even though the checkboxes below are untouched. Phases 4–5 have not started.
+
+Changed in this revision, after looking at how `/programari` actually renders on a phone:
+
+- **Month view stays on mobile and becomes the default.** The original call („illegible at 390px") was
+  about the cell contents, not the view — as a density map it works. Task 17b is new; the cell renders
+  status dots and a total instead of truncated text.
+- **`DatePickerSheet` is dropped** from Task 18 — the month view makes it redundant.
+- **Task 11** gains `dayDensity` plus its tests; **Task 14**'s pager gains a month step.
+- **Task 19** makes `JobsPage` full-bleed below `md`; the status filters and the search field move into
+  `CalendarFilters`.
+
+`InstallPrompt` (Task 10) and Phase 6 stay outside the current round of work.
+
 ## Global Constraints
 
 - **Breakpoint:** exactly one — `md` (768px). Phone styles are the unprefixed base; `md:` adds desktop. Never write a desktop style that a mobile style has to undo.
@@ -55,10 +72,10 @@ src/components/calendar/useLongPressDrag.ts   long-press → drag → snap → d
 src/components/calendar/MobileCalendar.tsx    mobile shell (date bar + views)
 src/components/calendar/CalendarPager.tsx     swipe between periods
 src/components/calendar/TimeGridView.tsx      day / 3-day grid
+src/components/calendar/MonthView.tsx         month grid, density cells
 src/components/calendar/AgendaView.tsx        schedule list
 src/components/calendar/EventSheet.tsx        event details + actions
-src/components/calendar/CalendarFilters.tsx   filter sheet
-src/components/calendar/DatePickerSheet.tsx   mini-month with density dots
+src/components/calendar/CalendarFilters.tsx   layers · operator · status · search
 
 src/pages/AziPage.tsx               operator landing: today's jobs
 src/pages/job-new/*                 wizard split into steps
@@ -1342,9 +1359,17 @@ export function snapMinutes(min: number, step?: number): number
 export function minutesFromY(y: number, pxPerMin: number, dayStartMin: number): number
 export function yFromMinutes(min: number, pxPerMin: number, dayStartMin: number): number
 export function autoScrollSpeed(pointerY: number, top: number, height: number): number
+
+export interface DayDensity { tones: string[]; total: number }
+export function dayDensity(tones: string[]): DayDensity
 ```
 
-`DAY_START_MIN = 7 * 60`, `DAY_END_MIN = 21 * 60`, `SNAP_MIN = 15`, `MIN_BLOCK_MIN = 20` are exported constants.
+`DAY_START_MIN = 7 * 60`, `DAY_END_MIN = 21 * 60`, `SNAP_MIN = 15`, `MIN_BLOCK_MIN = 20`,
+`MAX_DENSITY_DOTS = 4` are exported constants.
+
+`dayDensity` takes one tone key per job in the day, in chronological order, and returns the
+distinct tones in first-seen order (capped at `MAX_DENSITY_DOTS`) plus the untruncated total.
+It stays free of domain types — the caller maps `Job.status` to a tone through `STATUS_TONE`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1352,7 +1377,7 @@ export function autoScrollSpeed(pointerY: number, top: number, height: number): 
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { autoScrollSpeed, layoutDay, minutesFromY, snapMinutes, yFromMinutes } from './layout'
+import { autoScrollSpeed, dayDensity, layoutDay, minutesFromY, snapMinutes, yFromMinutes } from './layout'
 
 describe('layoutDay', () => {
   it('pune evenimentele care nu se suprapun pe o singură coloană', () => {
@@ -1422,6 +1447,26 @@ describe('autoScrollSpeed', () => {
     expect(Math.abs(autoScrollSpeed(0, 0, 800))).toBeGreaterThan(Math.abs(autoScrollSpeed(100, 0, 800)))
   })
 })
+
+describe('dayDensity', () => {
+  it('o zi goală nu are nici puncte, nici total', () => {
+    expect(dayDensity([])).toEqual({ tones: [], total: 0 })
+  })
+
+  it('păstrează un singur punct per status distinct', () => {
+    expect(dayDensity(['brand', 'brand', 'mint'])).toEqual({ tones: ['brand', 'mint'], total: 3 })
+  })
+
+  it('păstrează ordinea primei apariții', () => {
+    expect(dayDensity(['mint', 'brand', 'mint']).tones).toEqual(['mint', 'brand'])
+  })
+
+  it('taie punctele la patru, dar nu totalul', () => {
+    const out = dayDensity(['a', 'b', 'c', 'd', 'e', 'a', 'b'])
+    expect(out.tones).toEqual(['a', 'b', 'c', 'd'])
+    expect(out.total).toBe(7)
+  })
+})
 ```
 
 - [ ] **Step 2: Run them and confirm they fail**
@@ -1436,6 +1481,7 @@ export const DAY_START_MIN = 7 * 60
 export const DAY_END_MIN = 21 * 60
 export const SNAP_MIN = 15
 export const MIN_BLOCK_MIN = 20
+export const MAX_DENSITY_DOTS = 4
 const SCROLL_ZONE = 0.15
 const MAX_SCROLL_PX = 14
 
@@ -1505,12 +1551,28 @@ export function autoScrollSpeed(pointerY: number, top: number, height: number): 
   if (rel > height - zone) return MAX_SCROLL_PX * Math.min(1, (rel - (height - zone)) / zone)
   return 0
 }
+
+export interface DayDensity {
+  tones: string[]
+  total: number
+}
+
+/**
+ * Rezumatul unei zile pentru celula de lună: câte un punct per status distinct,
+ * cel mult patru, plus totalul netăiat al lucrărilor.
+ */
+export function dayDensity(tones: string[]): DayDensity {
+  return {
+    tones: [...new Set(tones)].slice(0, MAX_DENSITY_DOTS),
+    total: tones.length,
+  }
+}
 ```
 
 - [ ] **Step 4: Run the tests**
 
 Run: `npm test -- src/components/calendar/layout.test.ts`
-Expected: PASS (9 tests).
+Expected: PASS (13 tests).
 
 - [ ] **Step 5: Verify**
 
@@ -1768,18 +1830,25 @@ git commit -m "feat: add long-press drag hook with snap and auto-scroll"
 - Produces:
 
 ```tsx
+export type PagerStep = { unit: 'days'; count: number } | { unit: 'month' }
+
 export function CalendarPager({
   anchor,           // Date — începutul perioadei curente
-  step,             // câte zile are o pagină (1 sau 3)
+  step,             // o zi, trei zile, sau o lună
   onAnchorChange,   // (d: Date) => void
   render,           // (start: Date) => ReactNode
-}: { anchor: Date; step: number; onAnchorChange: (d: Date) => void; render: (start: Date) => ReactNode }): ReactElement
+}: { anchor: Date; step: PagerStep; onAnchorChange: (d: Date) => void; render: (start: Date) => ReactNode }): ReactElement
+
+export const shiftAnchor = (anchor: Date, step: PagerStep, dir: -1 | 1): Date
 ```
 
 Renders three pages — previous, current, next — in a `flex` row translated by `-100%`. A horizontal
 drag over 60px, or a flick faster than 0.4 px/ms, animates to the neighbouring page and calls
-`onAnchorChange(addDays(anchor, ±step))`; anything less springs back. `touch-action: pan-y` so
+`onAnchorChange(shiftAnchor(anchor, step, ±1))`; anything less springs back. `touch-action: pan-y` so
 vertical scrolling inside a page still works.
+
+`shiftAnchor` is `addDays(anchor, count * dir)` for `days` and `startOfMonth(addMonths(anchor, dir))`
+for `month` — month steps must not drift when the anchor sits on the 31st.
 
 - [ ] **Step 1: Implement the pager**
 
@@ -1948,17 +2017,95 @@ git commit -m "feat: add agenda view for the mobile calendar"
 
 ---
 
-### Task 18: Event sheet, filters sheet, date picker sheet
+### Task 17b: Month view
 
 **Files:**
-- Create: `src/components/calendar/EventSheet.tsx`, `src/components/calendar/CalendarFilters.tsx`, `src/components/calendar/DatePickerSheet.tsx`
+- Create: `src/components/calendar/MonthView.tsx`
+
+**Interfaces:**
+- Consumes: `dayDensity` + `MAX_DENSITY_DOTS` (Task 11), `CalEvent` (Task 12), `TONE_HEX`
+- Produces:
+
+```tsx
+export function MonthView({
+  anchor,           // orice zi din luna afișată
+  events,           // CalEvent[] deja filtrate
+  onPickDay,        // (d: Date) => void  — comută pe view-ul Zi
+  onCreateDay,      // (d: Date) => void  — long-press pe o zi
+}: MonthViewProps): ReactElement
+```
+
+The whole point of this view is orientation at a glance, so no event text is rendered — at 390px a
+cell is ~55px wide and today's build truncates labels to `PRIM 0` / `Ione…`, which carries nothing.
+
+- [ ] **Step 1: Implement the grid**
+
+Six rows of seven, Monday-first, built from `startOfWeek(startOfMonth(anchor), { weekStartsOn: 1 })`
+so the row count never changes and the grid can be a fixed `grid-rows-6` filling its container with
+`h-full`. A weekday header row of 28px sits above it, outside the six rows.
+
+Days outside the current month keep their number in `text-fg-faint` and still render density — a job
+on the 31st of the previous month is real work.
+
+- [ ] **Step 2: Implement the cell**
+
+Bucket `events` by `format(start, 'yyyy-MM-dd')` in a `useMemo`. Per day, in chronological order,
+take the tone of each **primire** and **execuție** event (`STATUS_TONE[job.status]` already carried on
+`CalEvent`) and feed the array to `dayDensity`.
+
+The cell renders, top to bottom:
+
+1. a time-off band — a 3px full-width bar in `TIME_OFF_COLOR[type]` when an all-day event covers the
+   day and the `concedii` layer is on (owner/manager only, exactly as elsewhere);
+2. the day number, `text-[13px]`, `font-semibold` when it is today;
+3. a row of up to `MAX_DENSITY_DOTS` dots, 6px, coloured from `TONE_HEX`;
+4. the total, `font-mono text-[11px] text-fg-mute` — omitted when the day is empty.
+
+Today's cell gets `bg-brand-500/8`. Cell borders reuse `border-line`.
+
+- [ ] **Step 3: Wire the gestures**
+
+`onPointerUp` under the 400ms threshold → `onPickDay(day)`. A press held past 400ms fires
+`useHaptics` and `onCreateDay(day)`; the pointer must not have moved more than 10px, otherwise the
+pager owns the gesture. No drag & drop here — a 55px cell offers no precise landing, and moving a job
+stays in Zi / 3 zile and in `EventSheet`.
+
+Set `touch-action: pan-x` on the grid so the pager still gets horizontal swipes.
+
+- [ ] **Step 4: Verify visually**
+
+Run: `npm run dev` at 390×844 and 360×800.
+Expected: six rows fill the space between the top bars and the tab bar with no page scroll; a busy day
+shows several dots and its total; an empty day shows only its number; tapping a day switches to Zi on
+that day.
+
+- [ ] **Step 5: Verify**
+
+Run: `npx tsc -b && npm run lint`
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "feat: add density-based month view for the mobile calendar"
+```
+
+---
+
+### Task 18: Event sheet and filters sheet
+
+**Files:**
+- Create: `src/components/calendar/EventSheet.tsx`, `src/components/calendar/CalendarFilters.tsx`
 
 **Interfaces:**
 - Consumes: `Sheet` (Task 3), `Stepper` (Task 4), `CalEvent` (Task 12), `useStore`
 - Produces:
   - `EventSheet({ event, onClose })` — `event: CalEvent | null`
-  - `CalendarFilters({ open, onClose, layers, who, onChange })` where `onChange: (f: CalFilters) => void`
-  - `DatePickerSheet({ open, onClose, value, onPick, counts })` where `counts: Record<string, number>` maps `yyyy-MM-dd` to a job count
+  - `CalendarFilters({ open, onClose, value, onChange })` where
+    `value: CalFilters = { layers, who, status, q }` and `onChange: (f: CalFilters) => void`
+
+There is no date picker sheet: the **Lună** view covers orientation, and tapping the period label
+switches to it. Building both would have meant two month grids with the same job.
 
 - [ ] **Step 1: Implement `EventSheet`**
 
@@ -1974,24 +2121,29 @@ Time-off events show only a label and a link to `/concedii`.
 
 - [ ] **Step 2: Implement `CalendarFilters`**
 
-A `Sheet` with two toggle rows for the layers (Primire mașină / Execuție), each with the colour swatch
-used today, and an operator list — „Toți" plus every `staff` name — as 44px radio rows.
+One `Sheet` holding everything that narrows the calendar, so nothing costs a row of screen:
 
-- [ ] **Step 3: Implement `DatePickerSheet`**
+- **Straturi** — toggle rows for Primire mașină / Execuție, each with the colour swatch used today,
+  plus Concedii for owner/manager only (`canSeeTimeOff`).
+- **Operator** — „Toți" plus every `staff` name as 44px radio rows, grouped by `position` the way the
+  desktop `Select` groups them today.
+- **Status** — the six filters currently living on `JobsPage` (`Toate`, `Programate`, `În lucru`,
+  `Așteaptă piese`, `Finalizate`, `Predate`), each with its count.
+- **Căutare** — the free-text field moved off `JobsPage`, `font-size: 16px` so iOS does not zoom.
 
-A month grid, Monday-first, Romanian weekday initials. Each day cell is 44px and carries up to three
-density dots sized by `counts[key]` (1, 2, 3+). Today is outlined, the selected day filled with
-`brand-500`. Chevrons switch months; picking a day calls `onPick(date)` and closes.
+A **Șterge filtrele** button in the footer restores
+`{ layers: ['primire','executie'], who: 'toti', status: 'toate', q: '' }`. Without it, a filter left on
+from yesterday reads as an empty calendar.
 
-- [ ] **Step 4: Verify**
+- [ ] **Step 3: Verify**
 
 Run: `npx tsc -b && npm run lint`
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: add event, filters and date picker sheets for the mobile calendar"
+git commit -m "feat: add event and filters sheets for the mobile calendar"
 ```
 
 ---
@@ -2008,38 +2160,69 @@ git commit -m "feat: add event, filters and date picker sheets for the mobile ca
 
 - [ ] **Step 1: Implement the shell**
 
-State: `view: 'agenda' | 'zi' | '3zile'` (default `agenda`), `anchor: Date` (default today),
-`filters: CalFilters` (default `{ layers: ['primire','executie'], who: 'toti' }`), plus open flags for
-the three sheets and the selected event.
+State: `view: 'luna' | 'agenda' | 'zi' | '3zile'` (default `luna`), `anchor: Date` (default today),
+`filters: CalFilters` (default `{ layers: ['primire','executie'], who: 'toti', status: 'toate', q: '' }`),
+plus open flags for the two sheets and the selected event.
 
-Top bar, 2 rows, both sticky:
-1. `‹` · the period label (tap → `DatePickerSheet`) · `›` · **Azi** · a filter button showing the active-filter count.
-2. `SegmentedControl` with Agendă / Zi / 3 zile.
+The root is `flex h-full min-h-0 flex-col`; only the body scrolls.
 
-Body: `CalendarPager` with `step = 1 | 3 | 14`, rendering `TimeGridView` for zi/3zile and
-`AgendaView` for agenda.
+Top bar, 2 rows, both `flex-none`:
+1. 48px — `‹` · the period label (tap → switch to **Lună**) · `›` · **Azi** · a filter button carrying
+   the active-filter count.
+2. 36px — `SegmentedControl` with Lună / Agendă / Zi / 3 zile.
+
+Body: `min-h-0 flex-1`, holding `CalendarPager` with
+`step = { unit: 'month' } | { unit: 'days', count: 1 | 3 | 14 }`, rendering `MonthView` for luna,
+`TimeGridView` for zi/3zile and `AgendaView` for agenda.
 
 `onEmptyLongPress` opens `QuickCreateModal` with `{ kind: 'ore', startDate, startMin, durationMin: 30 }`
-— the same `QuickRange` shape the desktop already uses. `onMove` performs the store writes listed in
-Task 16 step 3.
+— the same `QuickRange` shape the desktop already uses. From `MonthView`, `onCreateDay` opens it with
+`{ kind: 'zile', startDate, endDate }` instead, since a month cell carries no time. `onMove` performs
+the store writes listed in Task 16 step 3.
 
-- [ ] **Step 2: Switch renderers in `JobsPage`**
+`MonthView.onPickDay(d)` sets `anchor = d` and `view = 'zi'`.
+
+- [ ] **Step 2: Make `JobsPage` full-bleed on mobile**
+
+The calendar is the most-opened screen in the workshop and the hungriest for vertical space. Below
+`md`, `JobsPage` drops its page chrome and fills everything between `MobileHeader` and `BottomTabBar`:
 
 ```tsx
 const isDesktop = useIsDesktop()
-...
-{isDesktop ? <JobCalendar jobs={filtered} /> : <MobileCalendar jobs={filtered} />}
+
+if (!isDesktop)
+  return (
+    <div className="-mx-4 -mt-4 h-[calc(100%+1rem)] min-h-0">
+      <MobileCalendar jobs={jobs.filter((j) => j.status !== 'anulat')} />
+    </div>
+  )
 ```
 
-Below the calendar, the existing filterable job list stays on both — it becomes a `DataList` in Task 20.
+The negative margins cancel the `px-4 pt-4` that `AppLayout`'s `<main>` applies. `AppLayout` already
+gives `<main>` `min-h-0 flex-1 overflow-y-auto`; change `overflow-y-auto` to `overflow-hidden` for
+this route only is **not** needed — `MobileCalendar` owns its scroll and never grows past its box, so
+`<main>` has nothing to scroll.
+
+What disappears below `md`, and where it goes:
+
+| Removed | New home |
+|---|---|
+| `PageHeader` title + „N din M programări" | the period label in the top bar |
+| Calendar / Listă chips | the **Agendă** view is the list |
+| six status chips + search input | `CalendarFilters` |
+| status legend + „Următoarea: PRG-…" footer | dropped; `AziPage` covers it |
+
+Desktop keeps every one of them, plus `JobCalendar`, untouched. Task 20 turns the desktop list view
+into a `DataList`; it is out of scope here.
 
 - [ ] **Step 3: Verify visually**
 
-Run: `npm run dev` at 390×844.
-Expected: Agenda opens by default; swiping left/right moves the period and the label follows; the
-segmented control switches views without losing the anchor date; the filter button count matches the
-filters sheet; long-press on empty space opens the quick-create sheet with the tapped time filled in;
-`Azi` returns to today. At 1440px the desktop FullCalendar renders exactly as before.
+Run: `npm run dev` at 390×844 and 360×800.
+Expected: **Lună** opens by default and its six rows fill the screen with no page scroll; swiping
+left/right moves the period and the label follows; tapping a day lands on Zi for that day; tapping the
+period label returns to Lună; the segmented control switches views without losing the anchor; the
+filter button count matches the sheet; long-press on empty space opens quick-create with the tapped
+time filled in; `Azi` returns to today. At 1440px the desktop `JobsPage` renders exactly as before.
 
 - [ ] **Step 4: Verify**
 
@@ -2357,9 +2540,9 @@ npm run preview
 - [ ] **Step 3: Walk every screen at two phone sizes**
 
 Using argent (Chromium/CDP), at **390×844** and **360×800**, screenshot each of:
-Azi, Programări (agenda / zi / 3 zile), Programare nouă (all four steps), Fișă programare, Clienți,
-Client detaliu, Mașini, Mașină detaliu, Stoc, Notificări, Concedii, Rapoarte, Setări, Tracking,
-plus the More sheet and the install prompt.
+Azi, Programări (lună / agendă / zi / 3 zile), Programare nouă (all four steps), Fișă programare,
+Clienți, Client detaliu, Mașini, Mașină detaliu, Stoc, Notificări, Concedii, Rapoarte, Setări,
+Tracking, plus the More sheet and the install prompt.
 
 Do this twice: once as owner (Andrei), once as operator (Robert).
 
@@ -2374,11 +2557,21 @@ mid-word, every button at least 44px. In the console, this catches overflow:
 
 Expected: an empty array on every screen.
 
+On `/programari` also assert that the page itself does not scroll — the calendar owns its box:
+
+```js
+document.querySelector('main').scrollHeight <= document.querySelector('main').clientHeight
+```
+
+Expected: `true` at both sizes, in every view.
+
 - [ ] **Step 5: Exercise the calendar gestures**
 
 Long-press-drag a primire block to another hour, resize an execuție block, long-press empty space to
 create, swipe between three consecutive days, switch views, and check the store persisted each change
-by reloading the page.
+by reloading the page. In **Lună**: swipe between months, tap a day and confirm it lands on Zi for that
+day, tap the period label and confirm it returns to Lună, long-press a day and confirm quick-create
+opens with that date.
 
 - [ ] **Step 6: Fix what the pass found, then re-verify**
 
@@ -2396,11 +2589,13 @@ git commit -m "fix: mobile verification pass across all screens"
 ## Self-review notes
 
 - **Spec coverage:** fundament → Tasks 2–4; shell → Tasks 5–8; PWA and install prompt → Tasks 9–10;
-  calendar (events source, geometry, drag, views, sheets, filters) → Tasks 11–19; screens → Tasks 20–25;
-  verification → Task 26. Every spec section maps to at least one task.
-- **Naming:** `CalEvent`, `CalFilters`, `Layer`, `DragState`, `Interval`, `Placed`, `Column<T>` are
-  defined once (Tasks 11, 12, 13, 4) and referenced with the same names everywhere after.
+  calendar (events source, geometry, drag, views, sheets, filters, full-bleed layout) → Tasks 11–19;
+  screens → Tasks 20–25; verification → Task 26. Every spec section maps to at least one task.
+- **Naming:** `CalEvent`, `CalFilters`, `Layer`, `DragState`, `Interval`, `Placed`, `DayDensity`,
+  `PagerStep`, `Column<T>` are defined once (Tasks 11, 12, 13, 14, 4) and referenced with the same
+  names everywhere after.
 - **Known ordering constraint:** Task 16 depends on Task 13's `DragState` shape and Task 15's
-  `PX_PER_MIN`; Task 19 depends on Tasks 14–18. Do not reorder Phase 5.
+  `PX_PER_MIN`; Task 17b depends on Task 11's `dayDensity` and Task 12's `CalEvent`; Task 19 depends on
+  Tasks 14–18. Do not reorder Phase 5.
 - **Deliberately not covered:** service worker / offline, push notifications, real authentication,
   backend — all out of scope per the spec.

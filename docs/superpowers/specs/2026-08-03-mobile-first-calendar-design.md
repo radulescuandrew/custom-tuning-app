@@ -31,7 +31,7 @@ Non-obiective: backend, autentificare reală, offline sync, notificări push, ap
 | Decizie | Aleasă | Motiv |
 |---|---|---|
 | Acoperire | Shell + toate ecranele + calendar | Aplicația e folosită zilnic de pe telefon; ecrane pe jumătate adaptate ar rămâne blocante |
-| Calendar | Hibrid — FullCalendar pe desktop, view-uri custom pe telefon | FullCalendar pe touch e chinuit: drag prin long-press nativ imprecis, hit targets mici, month view ilizibil pe 390px. Rescrierea totală ar arunca layout-ul de suprapunere și resize-ul, deja rezolvate pe desktop |
+| Calendar | Hibrid — FullCalendar pe desktop, view-uri custom pe telefon | FullCalendar pe touch e chinuit: drag prin long-press nativ imprecis, hit targets mici, celule de lună care taie textul la patru litere. Rescrierea totală ar arunca layout-ul de suprapunere și resize-ul, deja rezolvate pe desktop |
 | Mutare pe telefon | Long-press ridică blocul + drag cu auto-scroll (plus sheet cu ore exacte ca alternativă) | E gestul deja cunoscut din Google Calendar; sheet-ul acoperă ajustarea fină |
 | Ecran de start | Operator → lucrările lui de azi; manager/owner → calendar, view Zi | Rolurile au treburi diferite în atelier |
 | PWA | Da: manifest + iconițe + `display:standalone` + `theme-color`, plus invitație de instalare pe telefon. Fără service worker | Datele stau deja local; offline-ul complet nu aduce nimic în plus. Instalarea scoate bara de browser și dă spațiu vertical calendarului |
@@ -94,7 +94,7 @@ Sidebar-ul actual rămâne neschimbat. `AppLayout` alege între cele două shell
 | Rol | Ecran |
 |---|---|
 | Operator (Robert, Daniel) | `/azi` — pagină nouă: lucrările lui de azi, listă simplă cu ▶ Începe / ■ Finalizează |
-| Manager, Owner | `/programari`, vizualizarea Zi |
+| Manager, Owner | `/programari`, vizualizarea Lună |
 
 Pe desktop comportamentul rămâne cel de azi (Dashboard). Restricțiile existente de rol
 (`canSeeTimeOff`, Setări) rămân valabile identic în shell-ul mobil, inclusiv pe rutele directe.
@@ -137,22 +137,73 @@ ca UI-ul să nu conțină logică de platformă.
 construiesc cele trei straturi — primire, execuție, concedii — cu culorile lor pe status.
 Îl consumă atât FullCalendar (desktop), cât și `MobileCalendar`.
 
+### Ecranul, pe tot spațiul disponibil
+
+Calendarul e ecranul cel mai des deschis din atelier și cel mai lacom de spațiu vertical.
+Pe telefon, `JobsPage` iese din `padding`-ul lui `main` și umple tot ce rămâne între
+`MobileHeader` și `BottomTabBar`. Pagina nu are scroll propriu — scroll-ul aparține grilei.
+
+Chrome-ul actual se redistribuie:
+
+| Element de azi | Unde ajunge |
+|---|---|
+| `PageHeader` — titlu + „N din M programări" | dispare; bara de dată spune unde ești |
+| chips **Calendar / Listă** | dispar; view-ul **Agendă** este lista |
+| 6 chips de status + input de căutare | sheet-ul **Filtre** |
+| toggle de straturi + select de operator | același sheet **Filtre** |
+| legenda de status + „Următoarea: PRG-…" | dispar; `AziPage` le acoperă |
+| cele două bare de toolbar FullCalendar | o bară de dată de 48px + `SegmentedControl` de 36px |
+
+Butonul de filtre poartă numărul de filtre active (`⚙3`) — altfel nu se mai vede ce a fost ascuns.
+
+Bugetul vertical la 390×844:
+
+```
+ 56  MobileHeader
+ 48  ‹ august 2026 ›                Azi  ⚙3
+ 36  [Agendă] [Zi] [3 zile] [Lună]
+604  grilă
+ 72  BottomTabBar (+ safe-area-inset-bottom)
+```
+
+La 360×800 rămân 560px pentru grilă. În ambele cazuri luna intră în șase rânduri fără scroll.
+Măsurat pe `JobsPage` de azi, calendarul primea ~240px.
+
 ### Vizualizări pe telefon
 
 | View | Conținut |
 |---|---|
-| **Agendă** (implicit) | Listă continuă pe zile, antet de zi sticky, gol marcat explicit („nimic programat") |
+| **Lună** (implicit) | Grilă 6×7, celulă de densitate — vezi mai jos |
+| **Agendă** | Listă continuă pe zile, antet de zi sticky, gol marcat explicit („nimic programat") |
 | **Zi** | Grilă orară 07:00–21:00, slot 30 min |
 | **3 zile** | Aceeași grilă, trei coloane |
 
-Comutare prin `SegmentedControl` în bara de sus. Vizualizarea „Lună" nu există pe telefon —
-mini-luna din selectorul de dată acoperă nevoia de orientare.
+Comutare prin `SegmentedControl` în bara de sus.
+
+### Celula de lună
+
+Pe 390px o celulă are ~55px lățime. Textul unui eveniment se taie la patru litere
+(`PRIM 0`, `Ione…`) și nu mai poartă informație. Celula randează deci densitate, nu text:
+
+- **Puncte** — maximum patru, câte unul per *status prezent* în ziua respectivă, cu culorile
+  din `TONE_HEX`. Patru puncte înseamnă patru stări diferite, nu patru lucrări.
+- **Număr** — totalul lucrărilor din zi, sub puncte. Lipsește când ziua e goală.
+- **Azi** — fundal `brand-500/8`.
+- **Concedii** — bandă subțire colorată în capul celulei, doar owner/manager, supusă
+  filtrului de strat ca peste tot.
+
+Gesturi: **tap** comută pe **Zi** pentru ziua atinsă; **long-press** deschide `QuickCreateModal`
+cu ziua precompletată; **swipe** orizontal schimbă luna.
+
+Fără drag & drop în Lună: într-o celulă de 55px nu există aterizare precisă. Mutarea se face
+în **Zi** / **3 zile**, sau din `EventSheet` → „Mută".
 
 ### Navigare
 
 Pager cu trei pagini (anterioară / curentă / următoare), swipe orizontal cu animație de tip spring.
-Bara de dată afișează perioada („august 2026"); tap deschide un `Sheet` cu mini-lună, în care
-fiecare zi are un punct de densitate (număr de lucrări).
+Pasul pager-ului urmează view-ul: o lună, trei zile sau o zi.
+Bara de dată afișează perioada („august 2026"); tap pe ea comută pe **Lună**.
+Nu există sheet separat de selectare a datei — view-ul Lună acoperă orientarea.
 
 ### Grila orară
 
@@ -195,8 +246,12 @@ Tap pe bloc → `EventSheet`: client, mașină, servicii, status, operator. Acț
 
 ### Filtre
 
-Filtrele pe operator și pe strat se mută într-un `Sheet` „Filtre", deschis dintr-un buton care arată
-numărul de filtre active. Azi ocupă un rând întreg din ecranul telefonului.
+Tot ce filtrează calendarul intră într-un singur `Sheet` „Filtre", deschis dintr-un buton care arată
+numărul de filtre active: straturile (primire / execuție / concedii), operatorul, statusul
+(cele șase chips de pe `JobsPage`) și căutarea liberă. Azi ocupă două rânduri întregi din ecran.
+
+Sheet-ul are un buton „Șterge filtrele" care readuce starea implicită — altfel un filtru uitat
+face calendarul să pară gol.
 
 ### Desktop
 
@@ -232,7 +287,9 @@ src/
     mobile/     BottomTabBar · MoreSheet · Fab · MobileHeader · SearchOverlay · InstallPrompt
     ui/         Sheet · SegmentedControl · StickyBar · DataList · Stepper  (+ ui.tsx existent)
     calendar/   useCalendarEvents · useLongPressDrag · MobileCalendar
-                AgendaView · TimeGridView · EventSheet · CalendarFilters
+                MonthView · AgendaView · TimeGridView
+                EventSheet · CalendarFilters
+                layout.ts (suprapunere · snap · auto-scroll · densitate pe zi)
                 JobCalendar (desktop)
   hooks/        useMediaQuery · useHaptics · useInstallPrompt
   pages/        AziPage (nou) · job-new/* · job-detail/*
@@ -252,6 +309,7 @@ Se adaugă `vitest` + `@testing-library/react`. Acoperire:
 
 - layout-ul de suprapunere din grila orară (clustere, coloane)
 - snap-ul la 15 minute și calculul auto-scroll-ului
+- densitatea pe zi pentru celula de lună — statusuri distincte (maximum patru) și total
 - `useCalendarEvents` — cele trei straturi, filtrarea concediilor după rol
 - `lib/money.ts` — bază / TVA / total (nu e acoperit azi și se atinge în ecranele de bani)
 
@@ -262,7 +320,8 @@ cu screenshot pentru fiecare ecran, în ambele roluri.
 
 ### Poartă de finalizare
 
-`npm run build` și `oxlint` fără erori; niciun scroll orizontal la 360px pe niciun ecran.
+`npm run build` și `oxlint` fără erori; niciun scroll orizontal la 360px pe niciun ecran;
+pe `/programari`, luna intră în șase rânduri fără scroll de pagină, la 390×844 și la 360×800.
 
 ---
 
@@ -281,4 +340,20 @@ cu screenshot pentru fiecare ecran, în ambele roluri.
 
 - Aplicația rămâne fără backend și fără autentificare reală; rolul vine în continuare din selectorul demo.
 - Nu se schimbă `data/types.ts` — trecerea e de prezentare și interacțiune.
-- Proiectul nu este sub git; specificația nu se poate comita (`git init` la cerere).
+
+## Revizie · 2026-08-06
+
+Faza 0-2 sunt implementate; Faza 3 doar pe jumătate (`manifest.webmanifest` și iconițele există,
+`InstallPrompt` nu); Fazele 4-5 nu sunt începute. Proiectul e acum sub git.
+
+Modificat în această revizie, pe baza felului în care ecranul se vede efectiv pe telefon:
+
+1. Vizualizarea **Lună rămâne pe telefon** și devine implicită. Judecata inițială („ilizibilă")
+   era despre conținutul celulei, nu despre view — ca hartă de densitate funcționează.
+   Celula randează puncte de status și un total în loc de text tăiat.
+2. **Sheet-ul de selectare a datei dispare** — view-ul Lună îl face redundant.
+3. `JobsPage` pe telefon devine **full-bleed**, cu tot chrome-ul strâns în două bare;
+   filtrele de status și căutarea coboară în sheet-ul „Filtre".
+4. Rutarea managerului la intrare: `/programari` în **Lună**, nu în Zi.
+
+`InstallPrompt` (Faza 3) și ecranele din Faza 6 rămân în afara rundei curente de lucru.
