@@ -1852,16 +1852,16 @@ vertical scrolling inside a page still works.
 `shiftAnchor` is `addDays(anchor, count * dir)` for `days` and `startOfMonth(addMonths(anchor, dir))`
 for `month` — month steps must not drift when the anchor sits on the 31st.
 
-- [ ] **Step 1: Implement the pager**
+- [x] **Step 1: Implement the pager**
 
 Track `dx` in state, `startX`/`startT` in refs. Only claim the gesture once `|dx| > |dy|` and
 `|dx| > 10`, so a vertical scroll in the time grid is never hijacked.
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `npx tsc -b && npm run lint`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
@@ -1904,24 +1904,24 @@ Block styling mirrors the desktop: primire = white fill, 2px coloured left borde
 label `PRIM`; execuție = `${color}26` fill, solid coloured left border, label `EXEC`. Both show
 `HH:mm` + car on line one and client · services on line two, truncated.
 
-- [ ] **Step 1: Implement the grid, hour gutter and now-indicator**
-- [ ] **Step 2: Implement event positioning via `layoutDay`**
-- [ ] **Step 3: Wire `onEventTap` and long-press on empty space**
+- [x] **Step 1: Implement the grid, hour gutter and now-indicator**
+- [x] **Step 2: Implement event positioning via `layoutDay`**
+- [x] **Step 3: Wire `onEventTap` and long-press on empty space**
 
 For empty space, attach a 400ms press timer on the column background; on fire, compute
 `snapMinutes(minutesFromY(offsetY, PX_PER_MIN))` and call `onEmptyLongPress` with that `Date`.
 
-- [ ] **Step 4: Verify visually**
+- [x] **Step 4: Verify visually**
 
 Temporarily render `<TimeGridView>` from `JobsPage` below the existing calendar at 390×844.
 Expected: correct hour alignment, overlapping jobs side by side, the now-line at the right height.
 Remove the temporary mount before committing.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `npx tsc -b && npm run lint && npm test`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -1932,6 +1932,9 @@ git commit -m "feat: add mobile time grid view"
 
 ### Task 16: Drag, resize and create in the time grid
 
+> Implemented together with Task 15 in one commit — splitting them would have left
+> three unused props on `TimeGridView` for a whole commit.
+
 **Files:**
 - Modify: `src/components/calendar/TimeGridView.tsx`
 
@@ -1939,19 +1942,19 @@ git commit -m "feat: add mobile time grid view"
 - Consumes: `useLongPressDrag` (Task 13)
 - Produces: `TimeGridView` gains `onMove: (e: CalEvent, deltaMin: number, deltaDays: number, edge: 'move' | 'start' | 'end') => void`
 
-- [ ] **Step 1: Bind the drag hook to event blocks**
+- [x] **Step 1: Bind the drag hook to event blocks**
 
 Call `bind(event.id)` on the block, `bind(event.id, 'start')` / `bind(event.id, 'end')` on two 44px
 resize handles that render only while that block is the active drag target. Blocks carry
 `touch-action: none`; time-off blocks are not bound (`editable === false`).
 
-- [ ] **Step 2: Render the lifted state and the time badge**
+- [x] **Step 2: Render the lifted state and the time badge**
 
 While `drag?.id === event.id`, apply `scale-[1.03]`, `shadow-xl`, `z-20`, and render a badge pinned to
 the block showing the prospective time, e.g. `10:45 – 13:45`, computed from the event start plus
 `drag.deltaMin`.
 
-- [ ] **Step 3: Commit the move**
+- [x] **Step 3: Commit the move**
 
 On `onCommit`, call `onMove(...)`. In the parent (`MobileCalendar`, Task 19) that maps to the same
 store writes the desktop calendar performs:
@@ -1963,18 +1966,18 @@ store writes the desktop calendar performs:
 
 Each write is followed by the same toast text the desktop uses.
 
-- [ ] **Step 4: Verify visually**
+- [x] **Step 4: Verify visually**
 
 Run: `npm run dev` at 390×844 with touch emulation on.
 Expected: press-and-hold lifts a block after ~400ms; dragging it to the top edge scrolls the grid;
 the badge tracks the finger in 15-minute steps; releasing moves the job and shows a toast; a short
 tap opens the event sheet instead; a plain vertical swipe still scrolls the grid.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `npx tsc -b && npm run lint && npm test`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
