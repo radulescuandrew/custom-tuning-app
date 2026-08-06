@@ -5,35 +5,18 @@ import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import roLocale from '@fullcalendar/core/locales/ro'
-import type { DatesSetArg, EventInput } from '@fullcalendar/core'
+import type { DatesSetArg } from '@fullcalendar/core'
 import { addMinutes, differenceInMinutes, format } from 'date-fns'
 import type { Job } from '@/data/types'
-import {
-  TIME_OFF_COLOR,
-  TIME_OFF_LABEL,
-  canSeeTimeOff,
-  carName,
-  clientName,
-  useCurrentUser,
-  useStore,
-} from '@/data/store'
-import { serviceDef } from '@/data/serviceCatalog'
-import { STATUS_TONE } from './StatusBadge'
-import { Button, Chip, Select } from './ui'
-import { IconChevronLeft, IconChevronRight } from './Icons'
-import QuickCreateModal, { type QuickRange } from './modals/QuickCreateModal'
+import { canSeeTimeOff, useCurrentUser, useStore } from '@/data/store'
+import { Button, Chip, Select } from '@/components/ui'
+import { IconChevronLeft, IconChevronRight } from '@/components/Icons'
+import QuickCreateModal, { type QuickRange } from '@/components/modals/QuickCreateModal'
 import { cx } from '@/lib/utils'
+import { type Layer, useCalendarEvents } from './useCalendarEvents'
+import { toFullCalendarEvents } from './fullCalendarAdapter'
 
 export type CalendarMode = 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay'
-
-const TONE_HEX: Record<string, string> = {
-  brand: '#d51f1f',
-  mint: '#0f8f5d',
-  ember: '#b8620f',
-  sky: '#5a6472',
-  rose: '#c22f49',
-  neutral: '#6b6b76',
-}
 
 const MODES: { key: CalendarMode; label: string }[] = [
   { key: 'dayGridMonth', label: 'Lună' },
@@ -41,14 +24,12 @@ const MODES: { key: CalendarMode; label: string }[] = [
   { key: 'timeGridDay', label: 'Zi' },
 ]
 
-type Layer = 'primire' | 'executie' | 'concedii'
-
 const dayKey = (d: Date) => format(d, 'yyyy-MM-dd')
 
 export default function JobCalendar({ jobs }: { jobs: Job[] }) {
   const nav = useNavigate()
   const api = useRef<FullCalendar>(null)
-  const { clients, cars, staff, timeOff, updateJob, toast } = useStore()
+  const { staff, updateJob, toast } = useStore()
   const me = useCurrentUser()
   const showTimeOff = canSeeTimeOff(me?.role)
 
@@ -61,86 +42,8 @@ export default function JobCalendar({ jobs }: { jobs: Job[] }) {
   const toggleLayer = (l: Layer) =>
     setLayers((s) => (s.includes(l) ? s.filter((x) => x !== l) : [...s, l]))
 
-  const visibleJobs = useMemo(
-    () => (who === 'toti' ? jobs : jobs.filter((j) => j.assignee === who)),
-    [jobs, who],
-  )
-
-  const events = useMemo<EventInput[]>(() => {
-    const out: EventInput[] = []
-
-    visibleJobs.forEach((j) => {
-      const car = cars.find((c) => c.id === j.carId)
-      const client = clients.find((c) => c.id === j.clientId)
-      const color = TONE_HEX[STATUS_TONE[j.status]] ?? '#6b6b76'
-      const common = {
-        code: j.code,
-        plate: car?.plate ?? '',
-        client: clientName(client),
-        services: j.services.map((s) => serviceDef(s.kind).short).join(' · '),
-        assignee: j.assignee,
-      }
-
-      /** 1. Primirea mașinii — slot scurt, în ziua programării. */
-      if (layers.includes('primire')) {
-        const start = new Date(j.startAt)
-        out.push({
-          id: j.id,
-          title: carName(car),
-          start,
-          end: addMinutes(start, j.durationMin || 30),
-          backgroundColor: '#ffffff',
-          borderColor: color,
-          textColor: '#16161b',
-          classNames: ['ct-ev-primire'],
-          extendedProps: { ...common, kind: 'primire' as const, color },
-        })
-      }
-
-      /** 2. Execuția planificată — poate fi în altă zi decât primirea. */
-      if (layers.includes('executie') && j.workStartAt) {
-        const ws = new Date(j.workStartAt)
-        const we = j.workEndAt ? new Date(j.workEndAt) : addMinutes(ws, j.estimateMin || 60)
-        out.push({
-          id: `${j.id}::work`,
-          title: carName(car),
-          start: ws,
-          end: we,
-          backgroundColor: `${color}26`,
-          borderColor: color,
-          textColor: '#16161b',
-          classNames: ['ct-ev-executie'],
-          extendedProps: { ...common, kind: 'executie' as const, color },
-        })
-      }
-    })
-
-    if (!showTimeOff || !layers.includes('concedii')) return out
-
-    /** 3. Concedii — doar owner/manager. */
-    timeOff.forEach((t) => {
-      const person = staff.find((s) => s.id === t.staffId)
-      const end = new Date(t.endDate)
-      end.setDate(end.getDate() + 1) // FullCalendar: end exclusiv
-      out.push({
-        id: `off-${t.id}`,
-        title:
-          t.type === 'inchis'
-            ? 'ATELIER ÎNCHIS'
-            : `${person?.name ?? '—'} · ${TIME_OFF_LABEL[t.type]}${t.approved ? '' : ' (neaprobat)'}`,
-        start: t.startDate,
-        end,
-        allDay: true,
-        display: 'block',
-        backgroundColor: `${TIME_OFF_COLOR[t.type]}1a`,
-        borderColor: TIME_OFF_COLOR[t.type],
-        textColor: TIME_OFF_COLOR[t.type],
-        editable: false,
-        extendedProps: { kind: 'timeoff' as const },
-      })
-    })
-    return out
-  }, [visibleJobs, cars, clients, staff, timeOff, showTimeOff, layers])
+  const calEvents = useCalendarEvents(jobs, { layers, who })
+  const events = useMemo(() => toFullCalendarEvents(calEvents), [calEvents])
 
   const go = (dir: 'prev' | 'next' | 'today') => {
     const cal = api.current?.getApi()

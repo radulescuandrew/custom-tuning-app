@@ -1600,7 +1600,8 @@ git commit -m "feat: add pure calendar geometry with unit tests"
 
 ```ts
 export type CalEventKind = 'primire' | 'executie' | 'timeoff'
-export type Layer = 'primire' | 'executie'
+/** `concedii` is a layer too — `JobCalendar` already toggles all three today */
+export type Layer = 'primire' | 'executie' | 'concedii'
 
 export interface CalEvent {
   /** unic în calendar: jobId, `${jobId}::work` sau `off-${id}` */
@@ -1626,10 +1627,11 @@ export function useCalendarEvents(jobs: Job[], filters: CalFilters): CalEvent[]
 export function toFullCalendarEvents(events: CalEvent[]): EventInput[]  // fullCalendarAdapter.ts
 ```
 
-`who === 'toti'` means no operator filter. Time-off events are only produced when the current user
-passes `canSeeTimeOff`; they are never editable.
+`who === 'toti'` means no operator filter. Time-off events need both the `concedii` layer on *and* a
+current user passing `canSeeTimeOff` — the role check is not a substitute for the toggle. They are
+never editable.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/components/calendar/useCalendarEvents.test.tsx`:
 
@@ -1701,26 +1703,26 @@ describe('useCalendarEvents', () => {
 })
 ```
 
-- [ ] **Step 2: Run it and confirm it fails**
+- [x] **Step 2: Run it and confirm it fails**
 
 Run: `npm test -- src/components/calendar/useCalendarEvents.test.tsx`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Extract the hook**
+- [x] **Step 3: Extract the hook**
 
 Move the `events` `useMemo` body out of `JobCalendar.tsx` into `useCalendarEvents.ts`, producing
 `CalEvent` objects (plain `Date`s, no FullCalendar shapes). Keep the existing colour rules:
 `TONE_HEX[STATUS_TONE[job.status]]` for jobs, `TIME_OFF_COLOR[t.type]` for time off. Move `TONE_HEX`
 here and export it.
 
-- [ ] **Step 4: Write the FullCalendar adapter**
+- [x] **Step 4: Write the FullCalendar adapter**
 
 `fullCalendarAdapter.ts` maps `CalEvent[]` to the exact `EventInput[]` shape `JobCalendar` produces
 today — white background with coloured border and class `ct-ev-primire` for primire,
 `${color}26` background with class `ct-ev-executie` for execuție, all-day block styling for time off —
 so the desktop calendar renders identically.
 
-- [ ] **Step 5: Rewire `JobCalendar`**
+- [x] **Step 5: Rewire `JobCalendar`**
 
 Move the file to `src/components/calendar/JobCalendar.tsx`. Replace its inline `events` memo with:
 
@@ -1731,22 +1733,22 @@ const events = useMemo(() => toFullCalendarEvents(calEvents), [calEvents])
 
 Fix the import in `src/pages/JobsPage.tsx`.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `npm test`
 Expected: all pass, including the 4 new ones.
 
-- [ ] **Step 7: Verify visually**
+- [x] **Step 7: Verify visually**
 
 Run: `npm run dev` at 1440×900, open Programări.
 Expected: the desktop calendar is unchanged — same colours, same PRIM/EXEC labels, drag and resize
 still write to the store.
 
-- [ ] **Step 8: Verify**
+- [x] **Step 8: Verify**
 
 Run: `npx tsc -b && npm run lint`
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add -A
@@ -2102,7 +2104,19 @@ git commit -m "feat: add density-based month view for the mobile calendar"
 - Produces:
   - `EventSheet({ event, onClose })` — `event: CalEvent | null`
   - `CalendarFilters({ open, onClose, value, onChange })` where
-    `value: CalFilters = { layers, who, status, q }` and `onChange: (f: CalFilters) => void`
+    `onChange: (f: MobileFilters) => void` and
+
+```ts
+/** starea completă a barei de filtre de pe telefon */
+export interface MobileFilters extends CalFilters {
+  status: JobStatus | 'toate'
+  q: string
+}
+```
+
+`CalFilters` (Task 12) stays `{ layers, who }` — that is all `useCalendarEvents` needs. `status` and `q`
+narrow the `Job[]` *before* it reaches the hook, exactly as `JobsPage` narrows it on desktop today, so
+job-level filtering never leaks into the event builder.
 
 There is no date picker sheet: the **Lună** view covers orientation, and tapping the period label
 switches to it. Building both would have meant two month grids with the same job.
@@ -2161,8 +2175,11 @@ git commit -m "feat: add event and filters sheets for the mobile calendar"
 - [ ] **Step 1: Implement the shell**
 
 State: `view: 'luna' | 'agenda' | 'zi' | '3zile'` (default `luna`), `anchor: Date` (default today),
-`filters: CalFilters` (default `{ layers: ['primire','executie'], who: 'toti', status: 'toate', q: '' }`),
+`filters: MobileFilters` (default `{ layers: ['primire','executie'], who: 'toti', status: 'toate', q: '' }`),
 plus open flags for the two sheets and the selected event.
+
+`status` and `q` narrow `jobs` first — reuse the predicate `JobsPage` already applies — and the
+narrowed array plus `{ layers, who }` go to `useCalendarEvents`.
 
 The root is `flex h-full min-h-0 flex-col`; only the body scrolls.
 
@@ -2591,9 +2608,10 @@ git commit -m "fix: mobile verification pass across all screens"
 - **Spec coverage:** fundament → Tasks 2–4; shell → Tasks 5–8; PWA and install prompt → Tasks 9–10;
   calendar (events source, geometry, drag, views, sheets, filters, full-bleed layout) → Tasks 11–19;
   screens → Tasks 20–25; verification → Task 26. Every spec section maps to at least one task.
-- **Naming:** `CalEvent`, `CalFilters`, `Layer`, `DragState`, `Interval`, `Placed`, `DayDensity`,
-  `PagerStep`, `Column<T>` are defined once (Tasks 11, 12, 13, 14, 4) and referenced with the same
-  names everywhere after.
+- **Naming:** `CalEvent`, `CalFilters`, `MobileFilters`, `Layer`, `DragState`, `Interval`, `Placed`,
+  `DayDensity`, `PagerStep`, `Column<T>` are defined once (Tasks 11, 12, 13, 14, 18, 4) and referenced
+  with the same names everywhere after. `CalFilters` is what the event builder needs (`layers`, `who`);
+  `MobileFilters` extends it with the job-level `status` and `q`.
 - **Known ordering constraint:** Task 16 depends on Task 13's `DragState` shape and Task 15's
   `PX_PER_MIN`; Task 17b depends on Task 11's `dayDensity` and Task 12's `CalEvent`; Task 19 depends on
   Tasks 14–18. Do not reorder Phase 5.
