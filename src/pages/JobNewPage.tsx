@@ -164,11 +164,11 @@ export default function JobNewPage() {
         ))}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-5">
           {step === 0 && (
             <Card title="1 · Client">
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Client" required className="sm:col-span-2">
                   <Select
                     value={clientId}
@@ -232,7 +232,7 @@ export default function JobNewPage() {
                 <p className="text-sm text-fg-mute">Alege întâi clientul.</p>
               ) : (
                 <>
-                  <div className="grid gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     {clientCars.map((c) => (
                       <button
                         key={c.id}
@@ -342,7 +342,7 @@ export default function JobNewPage() {
           {step === 3 && (
             <>
               <Card title="4 · Primirea mașinii">
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field label="Când vine clientul cu mașina" required>
                     <Input
                       type="datetime-local"
@@ -389,7 +389,7 @@ export default function JobNewPage() {
               </Card>
 
               <Card title="5 · Execuția lucrării">
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field
                     label="Start execuție"
                     hint="Poate fi în aceeași zi cu primirea sau mai târziu."

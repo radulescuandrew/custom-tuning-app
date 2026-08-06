@@ -2339,32 +2339,38 @@ git commit -m "feat: list screens render cards on phones via DataList"
 **Interfaces:**
 - Consumes: `DataList` and `Stepper` (Task 4), `Sheet` (Task 3)
 
-- [ ] **Step 1: Convert the item list**
+> The table was not the only thing breaking this screen. A `grid` whose only column is the implicit
+> `auto` track sizes to its content, not to its container, so the panel grew to 453px inside a 348px
+> box and the whole page scrolled sideways. Tailwind's `grid-cols-1` is `minmax(0, 1fr)`, which
+> clamps it. Every content grid in `src/` now carries it — a no-op above the breakpoint where a
+> `sm:`/`xl:` variant takes over.
+
+- [x] **Step 1: Convert the item list**
 
 Card: maker + name bold; roll number in mono; `qty` and `unit` large on the right, coloured `ember`
 when `qty <= minQty`; width, finish and location as a muted third line.
 
-- [ ] **Step 2: Move the quantity change into a sheet**
+- [x] **Step 2: Move the quantity change into a sheet**
 
 Tapping a card opens a `Sheet` titled with the item name containing a `Stepper`
 (`step={item.unit === 'm' ? 0.5 : 1}`, `min={0}`), a reason input, and **Salvează**, which calls the
 existing stock-movement store action. Keep the desktop inline +/− controls as they are.
 
-- [ ] **Step 3: Convert the movements journal**
+- [x] **Step 3: Convert the movements journal**
 
 Below the items, render the journal as a plain list on phones: date in mono, delta with sign
 (`mint` positive, `ember` negative), item name, author.
 
-- [ ] **Step 4: Verify visually**
+- [x] **Step 4: Verify visually**
 
 Expected at 360×800: no horizontal scroll; the stepper buttons are comfortably tappable; a change
 still appears in the journal and in the dashboard low-stock alert.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `npx tsc -b && npm run lint && npm test`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A

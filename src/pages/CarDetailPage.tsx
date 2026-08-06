@@ -63,7 +63,7 @@ export default function CarDetailPage() {
         }
       />
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_330px]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_330px]">
         <div className="flex flex-col gap-5">
           <Card title="Istoric la Custom Tuning" pad={false}>
             {myJobs.length === 0 ? (

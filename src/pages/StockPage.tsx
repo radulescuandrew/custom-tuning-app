@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '@/components/PageHeader'
 import {
   Badge,
@@ -10,10 +10,11 @@ import {
   Input,
   Modal,
   Select,
-  TableWrap,
-  Td,
-  Th,
 } from '@/components/ui'
+import { type Column, DataList } from '@/components/ui/DataList'
+import { Sheet } from '@/components/ui/Sheet'
+import { Stepper } from '@/components/ui/Stepper'
+import { useIsDesktop } from '@/hooks/useMediaQuery'
 import { useStore } from '@/data/store'
 import {
   STOCK_PRESETS,
@@ -22,7 +23,7 @@ import {
   nextRollNumber,
 } from '@/data/stockPresets'
 import type { StockCategory, StockItem } from '@/data/types'
-import { fmtDateTime } from '@/lib/utils'
+import { cx, fmtDateTime } from '@/lib/utils'
 import { IconPlus, IconTrash } from '@/components/Icons'
 
 const CATS: { key: StockCategory | 'toate'; label: string }[] = [
@@ -50,6 +51,7 @@ const emptyItem = {
 }
 
 export default function StockPage() {
+  const isDesktop = useIsDesktop()
   const { stock, moves, jobs, addStockItem, removeStockItem, adjustStock, toast } = useStore()
   const [cat, setCat] = useState<StockCategory | 'toate'>('toate')
   const [q, setQ] = useState('')
@@ -61,6 +63,34 @@ export default function StockPage() {
   const [adjust, setAdjust] = useState<{ item: StockItem; sign: 1 | -1 } | null>(null)
   const [adjustQty, setAdjustQty] = useState('')
   const [adjustReason, setAdjustReason] = useState('')
+
+  /** Pe telefon nu se ajustează cu +/− dintr-un rând de tabel: se atinge cardul și se corectează
+   *  cantitatea finală într-un sheet. `adjustStock` primește tot o diferență. */
+  const [sheetItem, setSheetItem] = useState<StockItem | null>(null)
+  const [sheetQty, setSheetQty] = useState(0)
+  const [sheetReason, setSheetReason] = useState('')
+
+  useEffect(() => {
+    if (!sheetItem) return
+    setSheetQty(sheetItem.qty)
+    setSheetReason('')
+  }, [sheetItem])
+
+  /** Rolele se măsoară în metri, deci pasul de un metru e prea grosier. */
+  const stepFor = (i: StockItem) => (i.unit === 'm' ? 0.5 : 1)
+
+  const saveSheet = () => {
+    if (!sheetItem) return
+    const delta = Number((sheetQty - sheetItem.qty).toFixed(2))
+    if (delta === 0) return setSheetItem(null)
+    adjustStock(
+      sheetItem.id,
+      delta,
+      sheetReason.trim() || (delta > 0 ? 'Recepție marfă' : 'Consum manual'),
+    )
+    toast(`${delta > 0 ? 'Adăugat' : 'Scăzut'} ${Math.abs(delta)}${sheetItem.unit}`)
+    setSheetItem(null)
+  }
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -142,6 +172,96 @@ export default function StockPage() {
     setAdjustReason('')
   }
 
+  const stateBadge = (i: StockItem) =>
+    i.qty <= 0 ? (
+      <Badge tone="rose">epuizat</Badge>
+    ) : i.qty <= i.minQty ? (
+      <Badge tone="ember">sub prag ({i.minQty})</Badge>
+    ) : (
+      <Badge tone="mint">ok</Badge>
+    )
+
+  const columns: Column<StockItem>[] = [
+    {
+      key: 'produs',
+      header: 'Produs',
+      cell: (i) => (
+        <>
+          <div className="font-semibold">{i.name}</div>
+          <div className="font-mono text-[11px] text-fg-faint">
+            {i.maker}
+            {i.width && ` · ${i.width}m`}
+            {i.location && ` · ${i.location}`}
+          </div>
+        </>
+      ),
+    },
+    { key: 'cat', header: 'Categorie', cell: (i) => catLabel(i.category), className: 'text-fg-mute' },
+    {
+      key: 'rola',
+      header: 'Rolă / lot',
+      cell: (i) => `#${i.rollNumber || '—'}`,
+      className: 'font-mono text-brand-400',
+    },
+    {
+      key: 'stoc',
+      header: 'Stoc',
+      cell: (i) => `${i.qty} ${i.unit}`,
+      className: 'font-mono font-bold',
+    },
+    { key: 'stare', header: 'Stare', cell: stateBadge },
+    {
+      key: 'actiuni',
+      header: '',
+      cell: (i) => (
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="subtle" onClick={() => setAdjust({ item: i, sign: 1 })}>
+            ＋
+          </Button>
+          <Button size="sm" variant="subtle" onClick={() => setAdjust({ item: i, sign: -1 })}>
+            －
+          </Button>
+          <button
+            onClick={() => {
+              if (confirm(`Ștergi ${i.name}?`)) removeStockItem(i.id)
+            }}
+            className="ml-1 text-fg-faint hover:text-rose"
+          >
+            <IconTrash width={15} height={15} />
+          </button>
+        </div>
+      ),
+    },
+  ]
+
+  const renderCard = (i: StockItem) => (
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[15px] font-bold">{i.name}</div>
+        <div className="truncate font-mono text-[11px] text-fg-faint">
+          {i.maker} · #{i.rollNumber || '—'}
+        </div>
+        <div className="mt-1.5 truncate font-mono text-[11px] text-fg-mute">
+          {[catLabel(i.category), i.width && `${i.width}m`, i.finish, i.location]
+            .filter(Boolean)
+            .join(' · ')}
+        </div>
+      </div>
+      <div className="flex flex-none flex-col items-end gap-1">
+        <span
+          className={cx(
+            'font-mono text-[20px] leading-none font-bold',
+            i.qty <= 0 ? 'text-rose' : i.qty <= i.minQty ? 'text-ember' : 'text-fg',
+          )}
+        >
+          {i.qty}
+          <span className="ml-0.5 text-[12px]">{i.unit}</span>
+        </span>
+        {i.qty <= i.minQty && stateBadge(i)}
+      </div>
+    </div>
+  )
+
   return (
     <>
       <PageHeader
@@ -164,83 +284,32 @@ export default function StockPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Caută produs, rolă…"
-          className="ml-auto w-60 rounded-lg border border-line-strong bg-ink-750 px-3 py-1.5 text-[13px] outline-none focus:border-brand-500/60"
+          className="w-full rounded-lg border border-line-strong bg-ink-750 px-3 py-2 text-[16px] outline-none focus:border-brand-500/60 md:ml-auto md:w-60 md:py-1.5 md:text-[13px]"
         />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_330px]">
-        <Card pad={false}>
-          {list.length === 0 ? (
-            <EmptyState text="Niciun produs." />
-          ) : (
-            <TableWrap>
-              <thead className="border-b border-line">
-                <tr>
-                  <Th>Produs</Th>
-                  <Th>Categorie</Th>
-                  <Th>Rolă / lot</Th>
-                  <Th>Stoc</Th>
-                  <Th>Stare</Th>
-                  <Th />
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((i) => (
-                  <tr key={i.id} className="border-b border-line/70 last:border-0 hover:bg-black/[0.035]">
-                    <Td>
-                      <div className="font-semibold">{i.name}</div>
-                      <div className="font-mono text-[11px] text-fg-faint">
-                        {i.maker}
-                        {i.width && ` · ${i.width}m`}
-                        {i.location && ` · ${i.location}`}
-                      </div>
-                    </Td>
-                    <Td className="text-fg-mute">{catLabel(i.category)}</Td>
-                    <Td className="font-mono text-brand-400">#{i.rollNumber || '—'}</Td>
-                    <Td className="font-mono font-bold">
-                      {i.qty} {i.unit}
-                    </Td>
-                    <Td>
-                      {i.qty <= 0 ? (
-                        <Badge tone="rose">epuizat</Badge>
-                      ) : i.qty <= i.minQty ? (
-                        <Badge tone="ember">sub prag ({i.minQty})</Badge>
-                      ) : (
-                        <Badge tone="mint">ok</Badge>
-                      )}
-                    </Td>
-                    <Td>
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="subtle"
-                          onClick={() => setAdjust({ item: i, sign: 1 })}
-                        >
-                          ＋
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="subtle"
-                          onClick={() => setAdjust({ item: i, sign: -1 })}
-                        >
-                          －
-                        </Button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Ștergi ${i.name}?`)) removeStockItem(i.id)
-                          }}
-                          className="ml-1 text-fg-faint hover:text-rose"
-                        >
-                          <IconTrash width={15} height={15} />
-                        </button>
-                      </div>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </TableWrap>
-          )}
-        </Card>
+      {/* grid-cols-1 = minmax(0,1fr); fără el coloana implicită `auto` se lățește după conținut */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_330px]">
+        {isDesktop ? (
+          <Card pad={false}>
+            <DataList
+              items={list}
+              getKey={(i) => i.id}
+              columns={columns}
+              renderCard={renderCard}
+              empty="Niciun produs."
+            />
+          </Card>
+        ) : (
+          <DataList
+            items={list}
+            getKey={(i) => i.id}
+            columns={columns}
+            renderCard={renderCard}
+            onRowClick={setSheetItem}
+            empty="Niciun produs."
+          />
+        )}
 
         <Card title="Mișcări recente" pad={false}>
           {moves.length === 0 ? (
@@ -292,7 +361,7 @@ export default function StockPage() {
           </>
         }
       >
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field
             label="Categorie"
             hint="Schimbă unitatea și sugestia de număr de rolă."
@@ -443,6 +512,90 @@ export default function StockPage() {
         </div>
       </Modal>
 
+      {/* ajustare pe telefon: cantitatea finală, nu o diferență de calculat în cap */}
+      <Sheet
+        open={!!sheetItem}
+        onClose={() => setSheetItem(null)}
+        title={sheetItem?.name}
+        subtitle={
+          sheetItem
+            ? `${sheetItem.maker} · #${sheetItem.rollNumber || '—'} · în stoc ${sheetItem.qty}${sheetItem.unit}`
+            : undefined
+        }
+        footer={
+          <>
+            <Button className="min-h-[44px] flex-1" onClick={() => setSheetItem(null)}>
+              Anulează
+            </Button>
+            <Button variant="primary" className="min-h-[44px] flex-1" onClick={saveSheet}>
+              Salvează
+            </Button>
+          </>
+        }
+      >
+        {sheetItem && (
+          <div className="space-y-4">
+            <div>
+              <span className="mono-label">Cantitate în stoc ({sheetItem.unit})</span>
+              <div className="mt-1.5">
+                <Stepper
+                  value={sheetQty}
+                  onChange={setSheetQty}
+                  step={stepFor(sheetItem)}
+                  min={0}
+                  unit={sheetItem.unit}
+                />
+              </div>
+            </div>
+
+            <p className="text-[13px] text-fg-mute">
+              {sheetQty === sheetItem.qty ? (
+                'Nicio schimbare.'
+              ) : (
+                <>
+                  {sheetItem.qty}
+                  {sheetItem.unit} →{' '}
+                  <span className="font-mono font-bold text-brand-400">
+                    {sheetQty}
+                    {sheetItem.unit}
+                  </span>{' '}
+                  <span
+                    className={cx(
+                      'font-mono font-bold',
+                      sheetQty > sheetItem.qty ? 'text-mint' : 'text-ember',
+                    )}
+                  >
+                    ({sheetQty > sheetItem.qty ? '+' : ''}
+                    {Number((sheetQty - sheetItem.qty).toFixed(2))})
+                  </span>
+                </>
+              )}
+            </p>
+
+            <label className="block">
+              <span className="mono-label">Motiv</span>
+              <input
+                value={sheetReason}
+                onChange={(e) => setSheetReason(e.target.value)}
+                placeholder={sheetQty >= sheetItem.qty ? 'Recepție marfă' : 'Consum / rebut'}
+                className="mt-1.5 w-full rounded-lg border border-line-strong bg-ink-750 px-3 py-2.5 text-[16px] outline-none placeholder:text-fg-faint focus:border-brand-500/60"
+              />
+            </label>
+
+            <button
+              onClick={() => {
+                if (!confirm(`Ștergi ${sheetItem.name}?`)) return
+                removeStockItem(sheetItem.id)
+                setSheetItem(null)
+              }}
+              className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg border border-line text-[14px] font-semibold text-rose"
+            >
+              <IconTrash width={15} height={15} /> Șterge produsul
+            </button>
+          </div>
+        )}
+      </Sheet>
+
       {/* modal ajustare */}
       <Modal
         open={!!adjust}
@@ -458,7 +611,7 @@ export default function StockPage() {
           </>
         }
       >
-        <div className="grid gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <Field label={`Cantitate (${adjust?.item.unit ?? ''})`} required>
             <Input type="number" value={adjustQty} onChange={(e) => setAdjustQty(e.target.value)} />
           </Field>

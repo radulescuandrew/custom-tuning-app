@@ -209,7 +209,7 @@ export default function JobDetailPage() {
           </div>
         }
       >
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-lg border border-dashed border-line-strong p-4">
             <div className="mono-label">1 · Primire mașină</div>
             <div className="mt-2 text-[15px] font-bold">{fmtDateTime(job.startAt)}</div>
@@ -271,7 +271,7 @@ export default function JobDetailPage() {
         </div>
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_330px]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_330px]">
         <div className="flex flex-col gap-5">
           {job.services.map((svc) => {
             const def = serviceDef(svc.kind)
@@ -316,7 +316,7 @@ export default function JobDetailPage() {
                   />
                 ) : (
                   <div className="flex flex-col gap-3">
-                    <dl className="grid gap-3 sm:grid-cols-3">
+                    <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       {def.groups
                         .flatMap((g) => g.fields)
                         .filter((f) => svc.values[f.key] && svc.values[f.key] !== '—')
@@ -580,7 +580,7 @@ export default function JobDetailPage() {
         width="max-w-xl"
         footer={<Button variant="primary" onClick={() => setEditMeta(false)}>Gata</Button>}
       >
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Data și ora">
             <Input
               type="datetime-local"

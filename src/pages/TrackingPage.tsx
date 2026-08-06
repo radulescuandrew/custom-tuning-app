@@ -87,7 +87,7 @@ export default function TrackingPage() {
           })}
         </ol>
 
-        <div className="grid gap-4 border-t border-line pt-5 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 border-t border-line pt-5 sm:grid-cols-3">
           <div>
             <div className="mono-label">Predare estimată</div>
             <div className="mt-1 font-semibold">{fmtDate(job.deliveryAt)}</div>

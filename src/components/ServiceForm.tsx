@@ -118,7 +118,7 @@ export default function ServiceForm({ entry, stock, onChange }: Props) {
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: def.accent }} />
             {g.title}
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">{g.fields.filter(visible).map(renderField)}</div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{g.fields.filter(visible).map(renderField)}</div>
         </div>
       ))}
 
@@ -257,7 +257,7 @@ export default function ServiceForm({ entry, stock, onChange }: Props) {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label={priceFieldLabel(settings)} hint={priceHint(settings, entry.price)}>
           <Input
             type="number"

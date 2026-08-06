@@ -240,7 +240,7 @@ export default function TimeOffPage() {
         ))}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_340px]">
         <Card
           title="Situația concediilor pe angajat"
           pad={false}
@@ -563,7 +563,7 @@ export default function TimeOffPage() {
           </>
         }
       >
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Persoană" required className="sm:col-span-2">
             <Select
               value={form.staffId}

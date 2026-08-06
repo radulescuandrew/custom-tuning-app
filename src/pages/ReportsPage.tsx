@@ -70,7 +70,7 @@ export default function ReportsPage() {
       />
 
       <Card title="Total ultimele 6 luni" className="mb-5">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {(settings.vatPayer
             ? ([
                 ['Bază impozabilă', fmtRon(sixMonths.net), 'text-fg'],
@@ -87,7 +87,7 @@ export default function ReportsPage() {
         </div>
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card title="Încasări programate / lună">
           <div className="flex h-52 items-end gap-3">
             {perMonth.map((m) => (

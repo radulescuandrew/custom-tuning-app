@@ -49,7 +49,7 @@ export default function ClientDetailPage() {
         }
       />
 
-      <div className="grid gap-5 xl:grid-cols-[330px_1fr]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[330px_1fr]">
         <div className="flex flex-col gap-5">
           <Card>
             <div className="flex items-center gap-3">

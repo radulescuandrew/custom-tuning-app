@@ -37,10 +37,10 @@ export default function SettingsPage() {
         subtitle="Datele firmei și regimul de TVA — se aplică peste tot unde apar prețuri"
       />
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_360px]">
         <div className="flex flex-col gap-5">
           <Card title="Firmă">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Denumire">
                 <Input
                   value={settings.companyName}
@@ -57,7 +57,7 @@ export default function SettingsPage() {
           </Card>
 
           <Card title="TVA">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field
                 label="Regim"
                 hint="Neplătitor = nu se afișează nicio linie de TVA în aplicație."
