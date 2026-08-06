@@ -108,13 +108,13 @@ export default function MobileCalendar({ jobs }: { jobs: Job[] }) {
     }
   }
 
-  const openHourSlot = (at: Date) =>
+  const openHourSlot = (at: Date, durationMin: number) =>
     setQuick({
       kind: 'ore',
       startDate: dayKey(at),
       endDate: dayKey(at),
       startMin: at.getHours() * 60 + at.getMinutes(),
-      durationMin: 30,
+      durationMin,
     })
 
   const renderPage = (start: Date) => {
@@ -146,7 +146,7 @@ export default function MobileCalendar({ jobs }: { jobs: Job[] }) {
         days={view === 'zi' ? 1 : 3}
         events={events}
         onEventTap={setSelected}
-        onEmptyLongPress={openHourSlot}
+        onEmptySelect={openHourSlot}
         onMove={applyMove}
         onPickDay={(d) => {
           setAnchor(startOfDay(d))

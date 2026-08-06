@@ -12,6 +12,7 @@ import {
   snapMinutes,
   yFromMinutes,
 } from './layout'
+import { useHaptics } from '@/hooks/useHaptics'
 import { type DragState, useLongPressDrag } from './useLongPressDrag'
 import type { CalEvent } from './useCalendarEvents'
 
@@ -23,6 +24,8 @@ const HOURS = Array.from(
   (_, i) => DAY_START_MIN / 60 + i,
 )
 const LONG_PRESS_MS = 400
+/** durata implicită a unei selecții noi, înainte de a fi trasă */
+const SLOT_MIN = 30
 
 const minutesOfDay = (d: Date) => d.getHours() * 60 + d.getMinutes()
 
@@ -72,19 +75,37 @@ export function placeDay(
   }
 }
 
-/** Cum arată blocul în timpul gestului: start/end deplasate, încă necomise. */
-function preview(p: PlacedEvent, drag: DragState | null) {
+/**
+ * Cum arată blocul în timpul gestului: start/end deplasate, încă necomise.
+ * Totul rămâne în fereastra 07:00–21:00 — altfel un bloc tras în jos afișează ore de după miezul nopții.
+ */
+export function preview(p: PlacedEvent, drag: DragState | null) {
   if (!drag || drag.id !== p.ev.id) return { startMin: p.startMin, endMin: p.endMin }
-  if (drag.edge === 'move')
-    return { startMin: p.startMin + drag.deltaMin, endMin: p.endMin + drag.deltaMin }
+
+  if (drag.edge === 'move') {
+    const span = p.endMin - p.startMin
+    const startMin = Math.min(
+      Math.max(DAY_START_MIN, p.startMin + drag.deltaMin),
+      DAY_END_MIN - span,
+    )
+    return { startMin, endMin: startMin + span }
+  }
+
   if (drag.edge === 'start')
     return {
-      startMin: Math.min(p.startMin + drag.deltaMin, p.endMin - MIN_BLOCK_MIN),
+      startMin: Math.max(
+        DAY_START_MIN,
+        Math.min(p.startMin + drag.deltaMin, p.endMin - MIN_BLOCK_MIN),
+      ),
       endMin: p.endMin,
     }
+
   return {
     startMin: p.startMin,
-    endMin: Math.max(p.endMin + drag.deltaMin, p.startMin + MIN_BLOCK_MIN),
+    endMin: Math.min(
+      DAY_END_MIN,
+      Math.max(p.endMin + drag.deltaMin, p.startMin + MIN_BLOCK_MIN),
+    ),
   }
 }
 
@@ -99,7 +120,8 @@ export interface TimeGridProps {
   days: 1 | 3
   events: CalEvent[]
   onEventTap: (e: CalEvent) => void
-  onEmptyLongPress: (start: Date) => void
+  /** apăsare lungă pe gol, apoi tragere: start + durata trasă */
+  onEmptySelect: (start: Date, durationMin: number) => void
   onMove: (e: CalEvent, deltaMin: number, deltaDays: number, edge: MoveEdge) => void
   /** tap pe „+N" dintr-o zi aglomerată — duce ziua aia pe tot ecranul */
   onPickDay?: (d: Date) => void
@@ -110,7 +132,7 @@ export function TimeGridView({
   days,
   events,
   onEventTap,
-  onEmptyLongPress,
+  onEmptySelect,
   onMove,
   onPickDay,
 }: TimeGridProps) {
@@ -173,7 +195,8 @@ export function TimeGridView({
         </div>
       )}
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      {/* py-2: eticheta primei ore e centrată pe linia 07:00, deci jumătate din ea cade deasupra grilei */}
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
         <div className="relative flex" style={{ height: GRID_HEIGHT }}>
           <div className="relative flex-none" style={{ width: GUTTER_PX }}>
             {HOURS.map((h) => (
@@ -197,7 +220,7 @@ export function TimeGridView({
                 drag={drag}
                 bind={bind}
                 onEventTap={onEventTap}
-                onEmptyLongPress={onEmptyLongPress}
+                onEmptySelect={onEmptySelect}
                 onPickDay={onPickDay}
               />
             ))}
@@ -227,7 +250,7 @@ function DayColumn({
   drag,
   bind,
   onEventTap,
-  onEmptyLongPress,
+  onEmptySelect,
   onPickDay,
 }: {
   day: Date
@@ -236,37 +259,83 @@ function DayColumn({
   drag: DragState | null
   bind: (id: string, edge?: MoveEdge) => { onPointerDown: (e: React.PointerEvent) => void }
   onEventTap: (e: CalEvent) => void
-  onEmptyLongPress: (start: Date) => void
+  onEmptySelect: (start: Date, durationMin: number) => void
   onPickDay?: (d: Date) => void
 }) {
   const { placed, hidden } = useMemo(
     () => placeDay(events, day, maxCols),
     [events, day, maxCols],
   )
-  const pressTimer = useRef<number | null>(null)
+  const { tap } = useHaptics()
 
-  const clearPress = () => {
+  const pressTimer = useRef<number | null>(null)
+  const anchorMin = useRef(0)
+  /** intervalul desenat cât timp degetul e jos; null = nu selectăm */
+  const [range, setRange] = useState<{ from: number; to: number } | null>(null)
+
+  const cancelPress = () => {
     if (pressTimer.current !== null) clearTimeout(pressTimer.current)
     pressTimer.current = null
+  }
+
+  /**
+   * La `pointerdown` coloana are încă `touch-action` permisiv, ca scroll-ul normal să meargă,
+   * deci Chrome a apucat să clasifice gestul ca pan. Schimbarea proprietății după long-press
+   * vine prea târziu — singurul lucru care mai oprește scroll-ul e `preventDefault` pe touchmove.
+   */
+  useEffect(() => {
+    if (!range) return
+    const stop = (e: TouchEvent) => e.preventDefault()
+    window.addEventListener('touchmove', stop, { passive: false })
+    return () => window.removeEventListener('touchmove', stop)
+  }, [range])
+
+  const minuteAt = (clientY: number, el: HTMLElement) =>
+    snapMinutes(minutesFromY(clientY - el.getBoundingClientRect().top, PX_PER_MIN))
+
+  const dateAt = (min: number) => {
+    const d = new Date(day)
+    d.setHours(Math.floor(min / 60), min % 60, 0, 0)
+    return d
   }
 
   return (
     <div
       className="relative flex-1 border-l border-line"
+      style={{ touchAction: range ? 'none' : undefined }}
       onPointerDown={(e) => {
         if (e.target !== e.currentTarget) return // apăsare pe un bloc, nu pe gol
-        const rect = e.currentTarget.getBoundingClientRect()
-        const offsetY = e.clientY - rect.top
+        const el = e.currentTarget
+        const min = minuteAt(e.clientY, el)
+        anchorMin.current = min
         pressTimer.current = window.setTimeout(() => {
-          const min = snapMinutes(minutesFromY(offsetY, PX_PER_MIN))
-          const at = new Date(day)
-          at.setHours(Math.floor(min / 60), min % 60, 0, 0)
-          onEmptyLongPress(at)
+          pressTimer.current = null
+          tap()
+          el.setPointerCapture(e.pointerId)
+          setRange({ from: min, to: min + SLOT_MIN })
         }, LONG_PRESS_MS)
       }}
-      onPointerMove={clearPress}
-      onPointerUp={clearPress}
-      onPointerCancel={clearPress}
+      onPointerMove={(e) => {
+        /** Înainte de long-press mișcarea aparține scroll-ului; după, extinde selecția. */
+        if (!range) return cancelPress()
+        const min = minuteAt(e.clientY, e.currentTarget)
+        const from = Math.min(anchorMin.current, min)
+        const to = Math.max(anchorMin.current + SLOT_MIN, min)
+        setRange({
+          from: Math.max(DAY_START_MIN, from),
+          to: Math.min(DAY_END_MIN, Math.max(to, from + SLOT_MIN)),
+        })
+      }}
+      onPointerUp={() => {
+        cancelPress()
+        if (!range) return
+        onEmptySelect(dateAt(range.from), range.to - range.from)
+        setRange(null)
+      }}
+      onPointerCancel={() => {
+        cancelPress()
+        setRange(null)
+      }}
     >
       {HOURS.map((h) => (
         <div key={h}>
@@ -284,6 +353,20 @@ function DayColumn({
       {placed.map((p) => (
         <EventBlock key={p.ev.id} placed={p} drag={drag} bind={bind} onTap={onEventTap} />
       ))}
+
+      {range && (
+        <div
+          className="pointer-events-none absolute inset-x-1 z-30 rounded-md border-2 border-brand-500 bg-brand-500/15"
+          style={{
+            top: yFromMinutes(range.from, PX_PER_MIN),
+            height: (range.to - range.from) * PX_PER_MIN,
+          }}
+        >
+          <span className="absolute -top-6 left-0 rounded-md bg-brand-500 px-1.5 py-0.5 font-mono text-[11px] font-bold whitespace-nowrap text-white">
+            {hhmm(range.from)} – {hhmm(range.to)}
+          </span>
+        </div>
+      )}
 
       {hidden > 0 && (
         <button
@@ -333,17 +416,23 @@ function EventBlock({
         touchAction: ev.editable ? 'none' : undefined,
       }}
     >
-      {/* lipicioasă: un bloc de câteva ore rămâne altfel un dreptunghi anonim când e scrollat la mijloc */}
-      <div className="sticky top-0 overflow-hidden px-1.5 py-1">
-        <div className="flex items-center gap-1 truncate text-[11.5px] font-bold">
-          <span className="font-mono text-[9px] font-bold uppercase" style={{ color: ev.color }}>
-            {primire ? 'PRIM' : 'EXEC'}
-          </span>
-          <span className="font-mono">{format(ev.start, 'HH:mm')}</span>
-          <span className="truncate">{ev.title}</span>
-        </div>
-        <div className="truncate font-mono text-[10px] text-fg-mute">
-          {ev.client} · {ev.services}
+      {/* Conținutul se decupează la cutia blocului; badge-ul și mânerele stau în afara ei, deci sunt frați. */}
+      <div className="absolute inset-0 overflow-hidden rounded-md">
+        {/* lipicioasă: un bloc de câteva ore rămâne altfel un dreptunghi anonim când e scrollat la mijloc */}
+        <div className="sticky top-0 px-1.5 py-0.5">
+          <div className="flex items-center gap-1 truncate text-[11.5px] leading-tight font-bold">
+            <span className="font-mono text-[9px] font-bold uppercase" style={{ color: ev.color }}>
+              {primire ? 'PRIM' : 'EXEC'}
+            </span>
+            <span className="font-mono">{format(ev.start, 'HH:mm')}</span>
+            <span className="truncate">{ev.title}</span>
+          </div>
+          {/* Sub ~45 min a doua linie nu are loc și ar ieși peste blocul următor. */}
+          {endMin - startMin >= 45 && (
+            <div className="truncate font-mono text-[10px] leading-tight text-fg-mute">
+              {ev.client} · {ev.services}
+            </div>
+          )}
         </div>
       </div>
 
