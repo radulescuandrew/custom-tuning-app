@@ -1371,7 +1371,7 @@ export function dayDensity(tones: string[]): DayDensity
 distinct tones in first-seen order (capped at `MAX_DENSITY_DOTS`) plus the untruncated total.
 It stays free of domain types — the caller maps `Job.status` to a tone through `STATUS_TONE`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/components/calendar/layout.test.ts`:
 
@@ -1469,12 +1469,12 @@ describe('dayDensity', () => {
 })
 ```
 
-- [ ] **Step 2: Run them and confirm they fail**
+- [x] **Step 2: Run them and confirm they fail**
 
 Run: `npm test -- src/components/calendar/layout.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `layout.ts`**
+- [x] **Step 3: Implement `layout.ts`**
 
 ```ts
 export const DAY_START_MIN = 7 * 60
@@ -1569,16 +1569,16 @@ export function dayDensity(tones: string[]): DayDensity {
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `npm test -- src/components/calendar/layout.test.ts`
 Expected: PASS (13 tests).
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `npx tsc -b && npm run lint`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
