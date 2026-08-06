@@ -67,9 +67,13 @@ export function AgendaView({
                     </>
                   )}
                 </span>
+                {/* goală pentru primire, plină pentru execuție — aceeași distincție ca pe desktop */}
                 <span
-                  className="h-9 w-1 flex-none rounded-full"
-                  style={{ backgroundColor: e.color }}
+                  className="h-9 w-1.5 flex-none rounded-full border-[1.5px]"
+                  style={{
+                    borderColor: e.color,
+                    backgroundColor: e.kind === 'primire' ? 'transparent' : e.color,
+                  }}
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px] font-semibold">{e.title}</span>

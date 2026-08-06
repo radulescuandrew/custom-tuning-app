@@ -1891,7 +1891,17 @@ export function TimeGridView({
 ```
 
 Layout: a 52px hour gutter plus `days` equal columns. `PX_PER_MIN = 1.1` → 07:00–21:00 is 924px, so
-the grid scrolls vertically inside its own container. Half-hour lines are `border-line`, hour lines
+the grid scrolls vertically inside its own container.
+
+Three things the first visual pass forced, all of them about legible space:
+
+- **Parallel columns are capped** — `MAX_COLS` is 4 in Zi and 2 in 3 zile. A day with 14 overlapping
+  jobs otherwise splits a ~100px column into 14 slivers of 7px. What does not fit is counted and
+  shown as a `+N` pill that opens that day in Zi, the same escape `eventMaxStack` gives the desktop.
+- **No day header when `days === 1`** — the date bar above already names the day, so the header was
+  60px spent to repeat it.
+- **The block label is `sticky top-0`** — a block several hours tall is an anonymous rectangle once
+  you scroll into its middle. Half-hour lines are `border-line`, hour lines
 `border-line-strong`. The now-indicator is a 2px `brand-500` line with a 8px dot at the left, rendered
 only when today is visible, positioned via `yFromMinutes` and re-rendered on a 60s interval.
 
@@ -1995,7 +2005,7 @@ git commit -m "feat: long-press drag, resize and create in the mobile time grid"
 - Consumes: `CalEvent` (Task 12)
 - Produces: `AgendaView({ start, days, events, onEventTap })` — `days` defaults to 14
 
-- [ ] **Step 1: Implement it**
+- [x] **Step 1: Implement it**
 
 Group events by day key (`yyyy-MM-dd`) over `days` days from `start`. Each day gets a sticky header
 (`sticky top-0 z-10 bg-ink-900/95 backdrop-blur`) showing the weekday and date in Romanian
@@ -2004,16 +2014,16 @@ Group events by day key (`yyyy-MM-dd`) over `days` days from `start`. Each day g
 services. Days with nothing show a muted „nimic programat" line — they are not skipped, so the
 scroll keeps its rhythm.
 
-- [ ] **Step 2: Verify visually**
+- [x] **Step 2: Verify visually**
 
 Expected at 390×844: no horizontal overflow, day headers stick while scrolling, tapping a row calls
 `onEventTap`.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `npx tsc -b && npm run lint`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
@@ -2043,7 +2053,7 @@ export function MonthView({
 The whole point of this view is orientation at a glance, so no event text is rendered — at 390px a
 cell is ~55px wide and today's build truncates labels to `PRIM 0` / `Ione…`, which carries nothing.
 
-- [ ] **Step 1: Implement the grid**
+- [x] **Step 1: Implement the grid**
 
 Six rows of seven, Monday-first, built from `startOfWeek(startOfMonth(anchor), { weekStartsOn: 1 })`
 so the row count never changes and the grid can be a fixed `grid-rows-6` filling its container with
@@ -2052,7 +2062,7 @@ so the row count never changes and the grid can be a fixed `grid-rows-6` filling
 Days outside the current month keep their number in `text-fg-faint` and still render density — a job
 on the 31st of the previous month is real work.
 
-- [ ] **Step 2: Implement the cell**
+- [x] **Step 2: Implement the cell**
 
 Bucket `events` by `format(start, 'yyyy-MM-dd')` in a `useMemo`. Per day, in chronological order,
 take the tone of each **primire** and **execuție** event (`STATUS_TONE[job.status]` already carried on
@@ -2068,7 +2078,7 @@ The cell renders, top to bottom:
 
 Today's cell gets `bg-brand-500/8`. Cell borders reuse `border-line`.
 
-- [ ] **Step 3: Wire the gestures**
+- [x] **Step 3: Wire the gestures**
 
 `onPointerUp` under the 400ms threshold → `onPickDay(day)`. A press held past 400ms fires
 `useHaptics` and `onCreateDay(day)`; the pointer must not have moved more than 10px, otherwise the
@@ -2077,18 +2087,18 @@ stays in Zi / 3 zile and in `EventSheet`.
 
 Set `touch-action: pan-x` on the grid so the pager still gets horizontal swipes.
 
-- [ ] **Step 4: Verify visually**
+- [x] **Step 4: Verify visually**
 
 Run: `npm run dev` at 390×844 and 360×800.
 Expected: six rows fill the space between the top bars and the tab bar with no page scroll; a busy day
 shows several dots and its total; an empty day shows only its number; tapping a day switches to Zi on
 that day.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `npx tsc -b && npm run lint`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -2124,7 +2134,7 @@ job-level filtering never leaks into the event builder.
 There is no date picker sheet: the **Lună** view covers orientation, and tapping the period label
 switches to it. Building both would have meant two month grids with the same job.
 
-- [ ] **Step 1: Implement `EventSheet`**
+- [x] **Step 1: Implement `EventSheet`**
 
 Header: car and plate, `StatusBadge`. Body: client with a `tel:` link, services, assignee, the
 primire window and the execuție window. Actions, each 44px:
@@ -2136,7 +2146,7 @@ primire window and the execuție window. Actions, each 44px:
 
 Time-off events show only a label and a link to `/concedii`.
 
-- [ ] **Step 2: Implement `CalendarFilters`**
+- [x] **Step 2: Implement `CalendarFilters`**
 
 One `Sheet` holding everything that narrows the calendar, so nothing costs a row of screen:
 
@@ -2152,11 +2162,11 @@ A **Șterge filtrele** button in the footer restores
 `{ layers: ['primire','executie'], who: 'toti', status: 'toate', q: '' }`. Without it, a filter left on
 from yesterday reads as an empty calendar.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run: `npx tsc -b && npm run lint`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
@@ -2175,7 +2185,7 @@ git commit -m "feat: add event and filters sheets for the mobile calendar"
 - Consumes: everything from Tasks 11–18, `useIsDesktop` (Task 2), `SegmentedControl` (Task 4), `QuickCreateModal`
 - Produces: `MobileCalendar({ jobs })`; `JobsPage` picks the renderer
 
-- [ ] **Step 1: Implement the shell**
+- [x] **Step 1: Implement the shell**
 
 State: `view: 'luna' | 'agenda' | 'zi' | '3zile'` (default `luna`), `anchor: Date` (default today),
 `filters: MobileFilters` (default `{ layers: ['primire','executie'], who: 'toti', status: 'toate', q: '' }`),
@@ -2202,7 +2212,7 @@ the store writes listed in Task 16 step 3.
 
 `MonthView.onPickDay(d)` sets `anchor = d` and `view = 'zi'`.
 
-- [ ] **Step 2: Make `JobsPage` full-bleed on mobile**
+- [x] **Step 2: Make `JobsPage` full-bleed on mobile**
 
 The calendar is the most-opened screen in the workshop and the hungriest for vertical space. Below
 `md`, `JobsPage` drops its page chrome and fills everything between `MobileHeader` and `BottomTabBar`:
@@ -2235,7 +2245,7 @@ What disappears below `md`, and where it goes:
 Desktop keeps every one of them, plus `JobCalendar`, untouched. Task 20 turns the desktop list view
 into a `DataList`; it is out of scope here.
 
-- [ ] **Step 3: Verify visually**
+- [x] **Step 3: Verify visually**
 
 Run: `npm run dev` at 390×844 and 360×800.
 Expected: **Lună** opens by default and its six rows fill the screen with no page scroll; swiping
@@ -2244,11 +2254,11 @@ period label returns to Lună; the segmented control switches views without losi
 filter button count matches the sheet; long-press on empty space opens quick-create with the tapped
 time filled in; `Azi` returns to today. At 1440px the desktop `JobsPage` renders exactly as before.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `npx tsc -b && npm run lint && npm test`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -2569,21 +2579,22 @@ Do this twice: once as owner (Andrei), once as operator (Robert).
 - [ ] **Step 4: Assert the hard rules**
 
 For each screenshot check: no horizontal scroll, no element under the tab bar, no text truncated
-mid-word, every button at least 44px. In the console, this catches overflow:
+mid-word, every button at least 44px. In the console:
 
 ```js
-[...document.querySelectorAll('*')].filter((el) => el.scrollWidth > document.documentElement.clientWidth)
+({
+  docScrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  bodyScrollX: document.body.scrollWidth - document.body.clientWidth,
+  mainScrollY: (() => { const m = document.querySelector('main'); return m.scrollHeight - m.clientHeight })(),
+})
 ```
 
-Expected: an empty array on every screen.
+Expected: `docScrollX` and `bodyScrollX` are 0 on every screen. On `/programari`, `mainScrollY` is 0
+too, in every view and at both sizes — the calendar owns its box and the page never scrolls.
 
-On `/programari` also assert that the page itself does not scroll — the calendar owns its box:
-
-```js
-document.querySelector('main').scrollHeight <= document.querySelector('main').clientHeight
-```
-
-Expected: `true` at both sizes, in every view.
+Do **not** audit with `[...document.querySelectorAll('*')].filter(el => el.scrollWidth > clientWidth)`.
+`CalendarPager` is deliberately `w-[300%]` inside an `overflow-hidden` parent, so that check reports
+two elements on a screen that scrolls nowhere. Measure the scrollport, not every box.
 
 - [ ] **Step 5: Exercise the calendar gestures**
 

@@ -5,6 +5,8 @@ import { PageHeader } from '@/components/PageHeader'
 import { Button, Card, Chip, EmptyState, TableWrap, Td, Th } from '@/components/ui'
 import { StatusBadge } from '@/components/StatusBadge'
 import JobCalendar from '@/components/calendar/JobCalendar'
+import MobileCalendar from '@/components/calendar/MobileCalendar'
+import { useIsDesktop } from '@/hooks/useMediaQuery'
 import { carName, clientName, jobTotal, statusLabel, useStore } from '@/data/store'
 import { serviceDef } from '@/data/serviceCatalog'
 import type { JobStatus } from '@/data/types'
@@ -24,6 +26,7 @@ const FILTERS: { key: JobStatus | 'toate'; label: string }[] = [
 export default function JobsPage() {
   const { fmt } = useMoney()
   const nav = useNavigate()
+  const isDesktop = useIsDesktop()
   const { jobs, clients, cars } = useStore()
   const [view, setView] = useState<'calendar' | 'lista'>('calendar')
   const [filter, setFilter] = useState<JobStatus | 'toate'>('toate')
@@ -44,6 +47,18 @@ export default function JobsPage() {
       })
       .sort((a, b) => b.startAt.localeCompare(a.startAt))
   }, [jobs, clients, cars, filter, q])
+
+  /**
+   * Pe telefon calendarul primește tot ecranul: antetul de pagină, comutatorul de vizualizare,
+   * chips-urile de status, căutarea și legenda pleacă — primele două în bara proprie a
+   * calendarului, restul în sheet-ul „Filtre". Marginile negative anulează `px-4 pt-4` din `main`.
+   */
+  if (!isDesktop)
+    return (
+      <div className="-mx-4 -mt-4 h-[calc(100%+1rem)] min-h-0">
+        <MobileCalendar jobs={jobs} />
+      </div>
+    )
 
   return (
     <>

@@ -36,8 +36,16 @@ export interface PlacedEvent {
   cols: number
 }
 
-/** Evenimentele unei zile, decupate la fereastra vizibilă și repartizate pe coloane paralele. */
-export function placeDay(events: CalEvent[], day: Date): PlacedEvent[] {
+/**
+ * Evenimentele unei zile, decupate la fereastra vizibilă și repartizate pe coloane paralele.
+ * `maxCols` plafonează lățimea împărțită: o zi cu 14 lucrări suprapuse ar da blocuri de 7px
+ * pe un telefon. Ce nu încape se numără în `hidden`, ca desktopul cu `eventMaxStack`.
+ */
+export function placeDay(
+  events: CalEvent[],
+  day: Date,
+  maxCols = Number.MAX_SAFE_INTEGER,
+): { placed: PlacedEvent[]; hidden: number } {
   const onDay = events.filter((e) => !e.allDay && isSameDay(e.start, day))
   const byId = new Map(onDay.map((e) => [e.id, e]))
 
@@ -51,7 +59,17 @@ export function placeDay(events: CalEvent[], day: Date): PlacedEvent[] {
     }
   })
 
-  return layoutDay(intervals).map((p) => ({ ...p, ev: byId.get(p.id)! }))
+  const all = layoutDay(intervals)
+  const visible = all.filter((p) => p.col < maxCols)
+
+  return {
+    placed: visible.map((p) => ({
+      ...p,
+      cols: Math.min(p.cols, maxCols),
+      ev: byId.get(p.id)!,
+    })),
+    hidden: all.length - visible.length,
+  }
 }
 
 /** Cum arată blocul în timpul gestului: start/end deplasate, încă necomise. */
@@ -73,6 +91,9 @@ function preview(p: PlacedEvent, drag: DragState | null) {
 const hhmm = (min: number) =>
   `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(Math.round(min) % 60).padStart(2, '0')}`
 
+/** Câte coloane paralele încap fără ca blocul să devină o așchie. */
+const MAX_COLS: Record<1 | 3, number> = { 1: 4, 3: 2 }
+
 export interface TimeGridProps {
   start: Date
   days: 1 | 3
@@ -80,6 +101,8 @@ export interface TimeGridProps {
   onEventTap: (e: CalEvent) => void
   onEmptyLongPress: (start: Date) => void
   onMove: (e: CalEvent, deltaMin: number, deltaDays: number, edge: MoveEdge) => void
+  /** tap pe „+N" dintr-o zi aglomerată — duce ziua aia pe tot ecranul */
+  onPickDay?: (d: Date) => void
 }
 
 export function TimeGridView({
@@ -89,6 +112,7 @@ export function TimeGridView({
   onEventTap,
   onEmptyLongPress,
   onMove,
+  onPickDay,
 }: TimeGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const colsRef = useRef<HTMLDivElement>(null)
@@ -128,23 +152,26 @@ export function TimeGridView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-none border-b border-line" style={{ paddingLeft: GUTTER_PX }}>
-        {columns.map((d) => (
-          <div key={d.toISOString()} className="flex-1 py-1.5 text-center">
-            <div className="font-mono text-[10px] tracking-wide text-fg-faint uppercase">
-              {format(d, 'EEE', { locale: ro })}
+      {/* Într-o singură zi, bara de dată de deasupra spune deja ce zi e — antetul ar fi 60px pierduți. */}
+      {days > 1 && (
+        <div className="flex flex-none border-b border-line" style={{ paddingLeft: GUTTER_PX }}>
+          {columns.map((d) => (
+            <div key={d.toISOString()} className="flex-1 py-1.5 text-center">
+              <div className="font-mono text-[10px] tracking-wide text-fg-faint uppercase">
+                {format(d, 'EEE', { locale: ro })}
+              </div>
+              <div
+                className={cx(
+                  'text-[15px] font-bold',
+                  isSameDay(d, now) ? 'text-brand-500' : 'text-fg',
+                )}
+              >
+                {format(d, 'd')}
+              </div>
             </div>
-            <div
-              className={cx(
-                'text-[15px] font-bold',
-                isSameDay(d, now) ? 'text-brand-500' : 'text-fg',
-              )}
-            >
-              {format(d, 'd')}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="relative flex" style={{ height: GRID_HEIGHT }}>
@@ -166,10 +193,12 @@ export function TimeGridView({
                 key={day.toISOString()}
                 day={day}
                 events={events}
+                maxCols={MAX_COLS[days]}
                 drag={drag}
                 bind={bind}
                 onEventTap={onEventTap}
                 onEmptyLongPress={onEmptyLongPress}
+                onPickDay={onPickDay}
               />
             ))}
           </div>
@@ -194,19 +223,26 @@ export function TimeGridView({
 function DayColumn({
   day,
   events,
+  maxCols,
   drag,
   bind,
   onEventTap,
   onEmptyLongPress,
+  onPickDay,
 }: {
   day: Date
   events: CalEvent[]
+  maxCols: number
   drag: DragState | null
   bind: (id: string, edge?: MoveEdge) => { onPointerDown: (e: React.PointerEvent) => void }
   onEventTap: (e: CalEvent) => void
   onEmptyLongPress: (start: Date) => void
+  onPickDay?: (d: Date) => void
 }) {
-  const placed = useMemo(() => placeDay(events, day), [events, day])
+  const { placed, hidden } = useMemo(
+    () => placeDay(events, day, maxCols),
+    [events, day, maxCols],
+  )
   const pressTimer = useRef<number | null>(null)
 
   const clearPress = () => {
@@ -248,6 +284,15 @@ function DayColumn({
       {placed.map((p) => (
         <EventBlock key={p.ev.id} placed={p} drag={drag} bind={bind} onTap={onEventTap} />
       ))}
+
+      {hidden > 0 && (
+        <button
+          onClick={() => onPickDay?.(day)}
+          className="sticky top-1 z-10 float-right mr-1 rounded-md bg-ink-900 px-1.5 py-0.5 font-mono text-[10px] font-bold text-fg shadow-md"
+        >
+          +{hidden}
+        </button>
+      )}
     </div>
   )
 }
@@ -288,7 +333,8 @@ function EventBlock({
         touchAction: ev.editable ? 'none' : undefined,
       }}
     >
-      <div className="overflow-hidden px-1.5 py-1">
+      {/* lipicioasă: un bloc de câteva ore rămâne altfel un dreptunghi anonim când e scrollat la mijloc */}
+      <div className="sticky top-0 overflow-hidden px-1.5 py-1">
         <div className="flex items-center gap-1 truncate text-[11.5px] font-bold">
           <span className="font-mono text-[9px] font-bold uppercase" style={{ color: ev.color }}>
             {primire ? 'PRIM' : 'EXEC'}
