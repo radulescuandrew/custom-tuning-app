@@ -1801,17 +1801,17 @@ delta via `snapMinutes(rawDelta)` and `deltaDays` from `Math.round(dx / colWidth
 block tracks the finger. On `pointerup`, call `onCommit(drag)` and clear. On `pointercancel` or
 `Escape`, clear without committing.
 
-- [ ] **Step 1: Implement the hook**
+- [x] **Step 1: Implement the hook**
 
 Use `setPointerCapture` on the target so the gesture survives leaving the element. Keep mutable
 values (`startY`, `startX`, `rafId`, `scrolled`) in refs; only `drag` is state.
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `npx tsc -b && npm run lint`
 Expected: clean. (Exercised in Task 16.)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
