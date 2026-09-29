@@ -10,8 +10,15 @@ import { IconMail, IconPhone } from '@/components/Icons'
 const KIND_LABEL: Record<string, string> = {
   retus_7z: 'Retuș colantare · 7 zile lucrătoare',
   retus_reminder_3z: 'Reminder retuș · +3 zile',
+  detailing_6l: 'Invitație detailing · 6 luni · −10%',
   ridicare: 'Ridicare mașină',
   custom: 'Notificare',
+}
+
+const KIND_TONE: Record<string, 'gold' | 'sky' | 'mint'> = {
+  retus_7z: 'gold',
+  retus_reminder_3z: 'sky',
+  detailing_6l: 'mint',
 }
 
 export default function NotificationsPage() {
@@ -37,7 +44,7 @@ export default function NotificationsPage() {
     <>
       <PageHeader
         title="Notificări clienți"
-        subtitle="Retușurile la colantare se programează automat la finalizarea lucrării: 7 zile lucrătoare + reminder după încă 3 zile."
+        subtitle="Retușurile la colantare se programează automat la finalizare (7 zile lucrătoare + reminder la 3 zile). Clienții de detailing primesc automat, la 6 luni, o invitație cu 10% reducere pentru locurile libere din calendar."
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -65,7 +72,7 @@ export default function NotificationsPage() {
                   <div className="min-w-[240px] flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold">{clientName(client)}</span>
-                      <Badge tone={n.kind === 'retus_reminder_3z' ? 'sky' : 'gold'}>
+                      <Badge tone={KIND_TONE[n.kind] ?? 'gold'}>
                         {KIND_LABEL[n.kind]}
                       </Badge>
                     </div>

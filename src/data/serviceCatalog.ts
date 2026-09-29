@@ -1,4 +1,4 @@
-import type { ServiceKind, StockCategory } from './types'
+import type { CarBodyType, ServiceKind, Settings, StockCategory } from './types'
 
 export type FieldType = 'text' | 'number' | 'select' | 'textarea' | 'roll'
 
@@ -18,6 +18,10 @@ export interface FieldDef {
 export interface GroupDef {
   title: string
   fields: FieldDef[]
+  /** grupurile cu același variantKey sunt alternative: se vede una singură, aleasă dintr-un toggle.
+   *  Alegerea se ține în entry.values[variantKey]; câmpurile grupului ascuns se golesc la comutare. */
+  variantKey?: string
+  variantValue?: string
 }
 
 export interface ServiceDef {
@@ -33,6 +37,8 @@ export interface ServiceDef {
   defaultPrice: number
   /** manopera estimata, in minute — folosita pentru sugestia de timp de lucru */
   estimateMin: number
+  /** metri de folie estimați pe un sedan (baza) — înmulțiți cu factorul caroseriei */
+  estimateMeters?: number
 }
 
 /** Spec: elementele care se pot infolia / inlocui. Se pot adauga si altele din UI. */
@@ -73,20 +79,19 @@ export const SERVICE_CATALOG: ServiceDef[] = [
     retouch: true,
     defaultPrice: 8900,
     estimateMin: 960,
+    estimateMeters: 18,
     groups: [
       {
         title: 'Folie de protecție (PPF)',
-        fields: [
-          { key: 'ppfMaker', label: 'Producător', type: 'text', placeholder: 'SunTek, XPEL, STEK…' },
-          { key: 'ppfFinish', label: 'Finisaj', type: 'select', options: ['—', 'Lucioasă', 'Mată'] },
-          { key: 'ppfRoll', label: 'Rolă folosită', type: 'roll', stockCategory: 'ppf' },
-        ],
+        variantKey: 'foilType',
+        variantValue: 'ppf',
+        fields: [{ key: 'ppfRoll', label: 'Rolă folosită', type: 'roll', stockCategory: 'ppf' }],
       },
       {
         title: 'Folie de culoare',
+        variantKey: 'foilType',
+        variantValue: 'color',
         fields: [
-          { key: 'colorMaker', label: 'Producător', type: 'text', placeholder: 'Avery, 3M, KPMF…' },
-          { key: 'colorName', label: 'Nume culoare', type: 'text', placeholder: 'Satin Dark Grey' },
           { key: 'colorRoll', label: 'Rolă folosită', type: 'roll', stockCategory: 'folie_color' },
         ],
       },
@@ -108,11 +113,11 @@ export const SERVICE_CATALOG: ServiceDef[] = [
     retouch: false,
     defaultPrice: 1200,
     estimateMin: 180,
+    estimateMeters: 5,
     groups: [
       {
         title: 'Folie geamuri',
         fields: [
-          { key: 'maker', label: 'Producător', type: 'text', placeholder: 'LLumar, 3M…' },
           {
             key: 'vlt',
             label: 'Grad transparență',
@@ -140,11 +145,11 @@ export const SERVICE_CATALOG: ServiceDef[] = [
     retouch: false,
     defaultPrice: 3200,
     estimateMin: 120,
+    estimateMeters: 2,
     groups: [
       {
         title: 'Parbriz',
         fields: [
-          { key: 'maker', label: 'Producător', type: 'text', placeholder: 'STEK, ExoShield…' },
           { key: 'code', label: 'Cod produs', type: 'text' },
           { key: 'roll', label: 'Rolă folosită', type: 'roll', stockCategory: 'ppf' },
           { key: 'metersUsed', label: 'Metri folosiți', type: 'number', suffix: 'm' },
@@ -354,17 +359,59 @@ export const SERVICE_CATALOG: ServiceDef[] = [
 export const serviceDef = (kind: ServiceKind) =>
   SERVICE_CATALOG.find((s) => s.kind === kind)!
 
+/** Tipurile de caroserie și factorul de timp implicit — configurabil din Setări. */
+export const CAR_TYPES: { value: CarBodyType; label: string; defaultFactor: number }[] = [
+  { value: 'compacta', label: 'Compactă', defaultFactor: 0.85 },
+  { value: 'sedan', label: 'Sedan', defaultFactor: 1 },
+  { value: 'break', label: 'Break', defaultFactor: 1.1 },
+  { value: 'coupe_sport', label: 'Coupé / Sport', defaultFactor: 1 },
+  { value: 'suv', label: 'SUV', defaultFactor: 1.25 },
+  { value: 'suv_mare', label: 'SUV mare / Van', defaultFactor: 1.4 },
+]
+
+export const carTypeLabel = (t?: CarBodyType | '') =>
+  CAR_TYPES.find((c) => c.value === t)?.label
+
+/** Durata de bază a unui serviciu: din Setări dacă e configurată, altfel din catalog. */
+export const serviceBaseMin = (kind: ServiceKind, settings?: Settings) =>
+  settings?.serviceDurationMin?.[kind] || serviceDef(kind).estimateMin
+
 /**
  * Estimare manoperă pentru un set de servicii.
  * Serviciile se execută secvențial, dar peste primul se adaugă doar 85% din restul
  * (echipa lucrează în paralel pe zone diferite ale mașinii).
+ * Duratele de bază vin din Setări (dacă sunt configurate), înmulțite cu factorul
+ * tipului de caroserie (SUV durează mai mult decât o compactă).
  */
-export const estimateMinutes = (kinds: ServiceKind[]) => {
+export const bodyFactor = (settings?: Settings, bodyType?: CarBodyType | '') =>
+  (bodyType && settings?.carTypeFactor?.[bodyType]) ||
+  (bodyType && CAR_TYPES.find((c) => c.value === bodyType)?.defaultFactor) ||
+  1
+
+/** Consum estimat de folie: baza serviciului × factorul caroseriei, rotunjit la 0.5m. */
+export const estimateFoilMeters = (
+  kind: ServiceKind,
+  settings?: Settings,
+  bodyType?: CarBodyType | '',
+) => {
+  const base = serviceDef(kind).estimateMeters
+  return base ? Math.round(base * bodyFactor(settings, bodyType) * 2) / 2 : 0
+}
+
+export const estimateMinutes = (
+  kinds: ServiceKind[],
+  settings?: Settings,
+  bodyType?: CarBodyType | '',
+) => {
   if (!kinds.length) return 0
-  const mins = kinds.map((k) => serviceDef(k).estimateMin).sort((a, b) => b - a)
+  const factor = bodyFactor(settings, bodyType)
+  const mins = kinds.map((k) => serviceBaseMin(k, settings) * factor).sort((a, b) => b - a)
   return Math.round(mins[0] + mins.slice(1).reduce((s, m) => s + m * 0.85, 0))
 }
 
 /** Estimarea rotunjită la sfert de oră, minim 30 min. */
-export const estimateRounded = (kinds: ServiceKind[]) =>
-  Math.max(30, Math.round(estimateMinutes(kinds) / 15) * 15)
+export const estimateRounded = (
+  kinds: ServiceKind[],
+  settings?: Settings,
+  bodyType?: CarBodyType | '',
+) => Math.max(30, Math.round(estimateMinutes(kinds, settings, bodyType) / 15) * 15)

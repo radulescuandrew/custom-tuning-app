@@ -169,10 +169,10 @@ export default function TimeOffPage() {
     }
     if (editing) {
       updateTimeOff(editing.id, payload)
-      toast('Absență actualizată')
+      toast('Concediu actualizat')
     } else {
       addTimeOff(payload)
-      toast('Absență adăugată')
+      toast('Concediu adăugat')
     }
     setOpen(false)
   }
@@ -213,7 +213,7 @@ export default function TimeOffPage() {
         subtitle="Zile lucrătoare, drept pro-rata din data angajării. Vizibil doar pentru owner și manager."
         action={
           <Button variant="primary" onClick={() => startAdd()}>
-            <IconPlus width={16} height={16} /> Adaugă absență
+            <IconPlus width={16} height={16} /> Adaugă concediu
           </Button>
         }
       />
@@ -345,7 +345,7 @@ export default function TimeOffPage() {
                     </Td>
                     <Td>
                       <Button size="sm" variant="subtle" onClick={() => startAdd(person.id)}>
-                        + absență
+                        + concediu
                       </Button>
                     </Td>
                   </tr>
@@ -521,7 +521,7 @@ export default function TimeOffPage() {
                             variant="subtle"
                             onClick={() => {
                               updateTimeOff(t.id, { approved: true })
-                              toast('Absență aprobată')
+                              toast('Concediu aprobat')
                             }}
                           >
                             Aprobă
@@ -532,7 +532,7 @@ export default function TimeOffPage() {
                         </Button>
                         <button
                           onClick={() => {
-                            if (confirm('Ștergi absența?')) removeTimeOff(t.id)
+                            if (confirm('Ștergi concediul?')) removeTimeOff(t.id)
                           }}
                           className="text-fg-faint hover:text-rose"
                         >
@@ -551,7 +551,7 @@ export default function TimeOffPage() {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title={editing ? 'Editează absența' : 'Absență nouă'}
+        title={editing ? 'Editează concediul' : 'Concediu nou'}
         subtitle="Se poate adăuga și direct din calendar, trăgând peste zile."
         width="max-w-xl"
         footer={

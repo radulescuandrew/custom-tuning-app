@@ -2,7 +2,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Card, Field, Input, Select } from '@/components/ui'
 import { IconWarn } from '@/components/Icons'
 import { ROLE_LABEL, canEditSettings, useCurrentUser, useStore } from '@/data/store'
-import { SERVICE_CATALOG } from '@/data/serviceCatalog'
+import { CAR_TYPES, SERVICE_CATALOG, serviceBaseMin } from '@/data/serviceCatalog'
 import { amounts, fmtRon, vatLabel } from '@/lib/money'
 
 /** Cotele de TVA din România — standard 21%, reduse 11% (+ 0% pentru neplătitori). */
@@ -103,6 +103,78 @@ export default function SettingsPage() {
                 </Select>
               </Field>
             </div>
+          </Card>
+
+          <Card
+            title="Durate manoperă pe serviciu"
+            action={
+              <span className="text-[12px] text-fg-faint">
+                sugestia de timp din programări pornește de aici
+              </span>
+            }
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {SERVICE_CATALOG.map((s) => {
+                const min = serviceBaseMin(s.kind, settings)
+                return (
+                  <Field key={s.kind} label={s.label} hint={`${(min / 60).toFixed(1)} h`}>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        step={15}
+                        min={15}
+                        value={min}
+                        onChange={(e) =>
+                          updateSettings({
+                            serviceDurationMin: {
+                              ...settings.serviceDurationMin,
+                              [s.kind]: Math.max(15, Number(e.target.value) || 0),
+                            },
+                          })
+                        }
+                      />
+                      <span className="text-[12px] text-fg-faint">min</span>
+                    </div>
+                  </Field>
+                )
+              })}
+            </div>
+            <p className="mt-3 text-[12px] text-fg-faint">
+              Durata de bază pentru un sedan. La mai multe servicii pe aceeași mașină, peste cel mai
+              lung se adaugă 85% din restul (echipa lucrează în paralel).
+            </p>
+          </Card>
+
+          <Card title="Factor de timp pe tip de mașină">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+              {CAR_TYPES.map((t) => {
+                const factor = settings.carTypeFactor?.[t.value] ?? t.defaultFactor
+                return (
+                  <Field key={t.value} label={t.label} hint={`×${factor}`}>
+                    <Input
+                      type="number"
+                      step={0.05}
+                      min={0.5}
+                      value={factor}
+                      onChange={(e) =>
+                        updateSettings({
+                          carTypeFactor: {
+                            ...settings.carTypeFactor,
+                            [t.value]: Math.max(0.5, Number(e.target.value) || 1),
+                          },
+                        })
+                      }
+                    />
+                  </Field>
+                )
+              })}
+            </div>
+            <p className="mt-3 text-[12px] text-fg-faint">
+              Exemplu: colantare {serviceBaseMin('colantare', settings)} min × SUV{' '}
+              {settings.carTypeFactor?.suv ?? 1.25} ={' '}
+              {Math.round(serviceBaseMin('colantare', settings) * (settings.carTypeFactor?.suv ?? 1.25))}{' '}
+              min. Tipul de caroserie se setează pe fiecare mașină.
+            </p>
           </Card>
         </div>
 

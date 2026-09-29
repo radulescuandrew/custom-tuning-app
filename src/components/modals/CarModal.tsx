@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Button, Field, Input, Modal, Select, Textarea } from '../ui'
 import { clientName, useStore } from '@/data/store'
-import type { Car } from '@/data/types'
+import { CAR_TYPES } from '@/data/serviceCatalog'
+import type { Car, CarBodyType } from '@/data/types'
 
 const empty = {
   clientId: '',
   make: '',
   model: '',
+  bodyType: '' as CarBodyType | '',
   year: '' as string,
   engine: '',
   plate: '',
@@ -91,6 +93,19 @@ export default function CarModal({
         </Field>
         <Field label="Model" required>
           <Input value={f.model} onChange={(e) => set('model', e.target.value)} placeholder="M4 Competition" />
+        </Field>
+        <Field label="Tip caroserie" hint="Folosit la estimarea timpului de lucru (SUV durează mai mult).">
+          <Select
+            value={f.bodyType}
+            onChange={(e) => setF((p) => ({ ...p, bodyType: e.target.value as CarBodyType | '' }))}
+          >
+            <option value="">— nespecificat —</option>
+            {CAR_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </Select>
         </Field>
         <Field label="An fabricație">
           <Input type="number" value={f.year} onChange={(e) => set('year', e.target.value)} />

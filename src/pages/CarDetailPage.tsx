@@ -14,7 +14,7 @@ export default function CarDetailPage() {
   const { fmt } = useMoney()
   const { id = '' } = useParams()
   const nav = useNavigate()
-  const { cars, clients, jobs, removeCar } = useStore()
+  const { cars, clients, jobs, stock, removeCar } = useStore()
   const [edit, setEdit] = useState(false)
 
   const car = cars.find((c) => c.id === id)
@@ -34,13 +34,24 @@ export default function CarDetailPage() {
   const filmHistory = myJobs.flatMap((j) =>
     j.services
       .filter((s) => s.kind === 'colantare')
-      .map((s) => ({
-        job: j,
-        maker: s.values.ppfMaker || s.values.colorMaker || '—',
-        detail: s.values.colorName || s.values.ppfFinish || '',
-        meters: s.values.metersUsed,
-        elements: s.elements.filter((e) => e.checked).length,
-      })),
+      .map((s) => {
+        /* datele foliei vin din rola aleasă; valorile scrise de mână rămân la lucrările vechi */
+        const roll = stock.find((x) => x.id === (s.values.ppfRoll || s.values.colorRoll))
+        return {
+          job: j,
+          maker: roll?.maker || s.values.ppfMaker || s.values.colorMaker || '—',
+          detail: roll
+            ? [
+                roll.name,
+                roll.finish === 'lucioasa' ? 'lucioasă' : roll.finish === 'mata' ? 'mată' : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            : s.values.colorName || s.values.ppfFinish || '',
+          meters: s.values.metersUsed,
+          elements: s.elements.filter((e) => e.checked).length,
+        }
+      }),
   )
 
   return (

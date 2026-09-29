@@ -17,11 +17,16 @@ export interface Client {
   createdAt: string
 }
 
+/** Tip caroserie — folosit la estimarea manoperei (SUV durează mai mult decât o compactă). */
+export type CarBodyType = 'compacta' | 'sedan' | 'break' | 'coupe_sport' | 'suv' | 'suv_mare'
+
 export interface Car {
   id: ID
   clientId: ID
   make: string
   model: string
+  /** gol = necompletat, se folosește factorul 1 la estimări */
+  bodyType?: CarBodyType | ''
   year: number | null
   engine: string
   plate: string
@@ -171,7 +176,12 @@ export interface StockMove {
   by: string
 }
 
-export type NotificationKind = 'retus_7z' | 'retus_reminder_3z' | 'ridicare' | 'custom'
+export type NotificationKind =
+  | 'retus_7z'
+  | 'retus_reminder_3z'
+  | 'detailing_6l'
+  | 'ridicare'
+  | 'custom'
 export type NotificationChannel = 'sms' | 'email' | 'whatsapp'
 export type NotificationStatus = 'programata' | 'trimisa' | 'anulata'
 
@@ -234,6 +244,10 @@ export interface Settings {
   vatRate: number
   /** prețurile din fișe sunt introduse cu TVA inclus (true) sau ca bază (false) */
   pricesIncludeVat: boolean
+  /** durate de manoperă (minute) per serviciu — suprascriu valorile din catalog */
+  serviceDurationMin: Partial<Record<ServiceKind, number>>
+  /** factor de timp per tip de caroserie (SUV 1.25 = +25% față de bază) */
+  carTypeFactor: Record<CarBodyType, number>
 }
 
 export interface DB {

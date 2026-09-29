@@ -58,6 +58,8 @@ export default function StockPage() {
   const [newOpen, setNewOpen] = useState(false)
   const [form, setForm] = useState(emptyItem)
   const [presetKey, setPresetKey] = useState('')
+  /** detaliile (furnizor, rolă, lățime…) stau pliate: de obicei totul e în denumire sau în preset */
+  const [detailsOpen, setDetailsOpen] = useState(false)
   /** furnizor scris de mână, în afara listei */
   const [otherMaker, setOtherMaker] = useState(false)
   const [adjust, setAdjust] = useState<{ item: StockItem; sign: 1 | -1 } | null>(null)
@@ -112,6 +114,7 @@ export default function StockPage() {
     setForm({ ...emptyItem, category, rollNumber: nextRollNumber(category, stock) })
     setPresetKey('')
     setOtherMaker(false)
+    setDetailsOpen(false)
     setNewOpen(true)
   }
 
@@ -389,47 +392,7 @@ export default function StockPage() {
             </Select>
           </Field>
 
-          <Field label="Furnizor / producător">
-            {otherMaker ? (
-              <div className="flex gap-2">
-                <Input
-                  autoFocus
-                  value={form.maker}
-                  placeholder="Nume furnizor"
-                  onChange={(e) => setForm((f) => ({ ...f, maker: e.target.value }))}
-                />
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setOtherMaker(false)
-                    setForm((f) => ({ ...f, maker: '' }))
-                  }}
-                >
-                  listă
-                </Button>
-              </div>
-            ) : (
-              <Select
-                value={suppliers.includes(form.maker) ? form.maker : ''}
-                onChange={(e) => {
-                  if (e.target.value === '__other') {
-                    setOtherMaker(true)
-                    setForm((f) => ({ ...f, maker: '' }))
-                  } else setForm((f) => ({ ...f, maker: e.target.value }))
-                }}
-              >
-                <option value="">— alege —</option>
-                {suppliers.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-                <option value="__other">Alt furnizor…</option>
-              </Select>
-            )}
-          </Field>
-
-          <Field label="Denumire produs" required className="sm:col-span-2">
+          <Field label="Denumire produs" required>
             <Input
               list="stock-names"
               value={form.name}
@@ -442,74 +405,140 @@ export default function StockPage() {
               ))}
             </datalist>
           </Field>
-
-          <Field label="Număr rolă / lot" hint="Sugerat automat, următorul liber din categorie.">
-            <div className="flex gap-2">
-              <Input
-                value={form.rollNumber}
-                onChange={(e) => setForm((f) => ({ ...f, rollNumber: e.target.value }))}
-                placeholder="R-12"
-              />
-              <Button
-                size="sm"
-                onClick={() =>
-                  setForm((f) => ({ ...f, rollNumber: nextRollNumber(f.category, stock) }))
-                }
-              >
-                sugerează
-              </Button>
-            </div>
-          </Field>
-          <Field label="Lățime (m)">
-            <Input value={form.width} onChange={(e) => setForm((f) => ({ ...f, width: e.target.value }))} />
-          </Field>
-          <Field label="Finisaj">
-            <Select
-              value={form.finish}
-              onChange={(e) => setForm((f) => ({ ...f, finish: e.target.value as StockItem['finish'] }))}
-            >
-              <option value="">—</option>
-              <option value="lucioasa">Lucioasă</option>
-              <option value="mata">Mată</option>
-            </Select>
-          </Field>
-          <Field label="Unitate">
-            <Select
-              value={form.unit}
-              onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value as StockItem['unit'] }))}
-            >
-              <option value="m">metri</option>
-              <option value="buc">bucăți</option>
-            </Select>
-          </Field>
-          <Field label="Cantitate inițială">
+          <Field label={`Cantitate inițială (${form.unit})`}>
             <Input
               type="number"
               value={form.qty}
               onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
             />
           </Field>
-          <Field label="Prag alertă">
-            <Input
-              type="number"
-              value={form.minQty}
-              onChange={(e) => setForm((f) => ({ ...f, minQty: e.target.value }))}
-            />
-          </Field>
-          <Field label="Locație" className="sm:col-span-2" hint="Rafturile deja folosite apar în listă.">
-            <Input
-              list="stock-locations"
-              value={form.location}
-              onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-              placeholder="Raft A1"
-            />
-            <datalist id="stock-locations">
-              {locations.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
-          </Field>
         </div>
+
+        {/* restul câmpurilor stau pliate: de obicei totul e în denumire sau vine din preset */}
+        <button
+          onClick={() => setDetailsOpen((v) => !v)}
+          className="mt-4 flex w-full items-center gap-2 rounded-lg border border-line px-3 py-2.5 text-left text-[13px] font-semibold text-fg-mute hover:text-fg"
+        >
+          <span className={cx('transition-transform', detailsOpen && 'rotate-90')}>▸</span>
+          Detalii
+          {!detailsOpen && (
+            <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] font-normal text-fg-faint">
+              {[
+                form.rollNumber && `#${form.rollNumber}`,
+                form.maker,
+                form.width && `${form.width}m`,
+                form.finish === 'lucioasa' ? 'lucioasă' : form.finish === 'mata' ? 'mată' : '',
+                form.minQty && `prag ${form.minQty}`,
+                form.location,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          )}
+        </button>
+
+        {detailsOpen && (
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Furnizor / producător">
+              {otherMaker ? (
+                <div className="flex gap-2">
+                  <Input
+                    autoFocus
+                    value={form.maker}
+                    placeholder="Nume furnizor"
+                    onChange={(e) => setForm((f) => ({ ...f, maker: e.target.value }))}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setOtherMaker(false)
+                      setForm((f) => ({ ...f, maker: '' }))
+                    }}
+                  >
+                    listă
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  value={suppliers.includes(form.maker) ? form.maker : ''}
+                  onChange={(e) => {
+                    if (e.target.value === '__other') {
+                      setOtherMaker(true)
+                      setForm((f) => ({ ...f, maker: '' }))
+                    } else setForm((f) => ({ ...f, maker: e.target.value }))
+                  }}
+                >
+                  <option value="">— alege —</option>
+                  {suppliers.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                  <option value="__other">Alt furnizor…</option>
+                </Select>
+              )}
+            </Field>
+            <Field label="Număr rolă / lot" hint="Sugerat automat, următorul liber din categorie.">
+              <div className="flex gap-2">
+                <Input
+                  value={form.rollNumber}
+                  onChange={(e) => setForm((f) => ({ ...f, rollNumber: e.target.value }))}
+                  placeholder="R-12"
+                />
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setForm((f) => ({ ...f, rollNumber: nextRollNumber(f.category, stock) }))
+                  }
+                >
+                  sugerează
+                </Button>
+              </div>
+            </Field>
+            <Field label="Lățime (m)">
+              <Input value={form.width} onChange={(e) => setForm((f) => ({ ...f, width: e.target.value }))} />
+            </Field>
+            <Field label="Finisaj">
+              <Select
+                value={form.finish}
+                onChange={(e) => setForm((f) => ({ ...f, finish: e.target.value as StockItem['finish'] }))}
+              >
+                <option value="">—</option>
+                <option value="lucioasa">Lucioasă</option>
+                <option value="mata">Mată</option>
+              </Select>
+            </Field>
+            <Field label="Unitate">
+              <Select
+                value={form.unit}
+                onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value as StockItem['unit'] }))}
+              >
+                <option value="m">metri</option>
+                <option value="buc">bucăți</option>
+              </Select>
+            </Field>
+            <Field label="Prag alertă">
+              <Input
+                type="number"
+                value={form.minQty}
+                onChange={(e) => setForm((f) => ({ ...f, minQty: e.target.value }))}
+              />
+            </Field>
+            <Field label="Locație" className="sm:col-span-2" hint="Rafturile deja folosite apar în listă.">
+              <Input
+                list="stock-locations"
+                value={form.location}
+                onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                placeholder="Raft A1"
+              />
+              <datalist id="stock-locations">
+                {locations.map((l) => (
+                  <option key={l} value={l} />
+                ))}
+              </datalist>
+            </Field>
+          </div>
+        )}
       </Modal>
 
       {/* ajustare pe telefon: cantitatea finală, nu o diferență de calculat în cap */}

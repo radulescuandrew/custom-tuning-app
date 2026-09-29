@@ -17,10 +17,10 @@ import type {
   TimeOff,
   TimeOffType,
 } from './types'
-import { buildSeed } from './seed'
+import { buildSeed, defaultSettings } from './seed'
 import { estimateRounded, serviceDef } from './serviceCatalog'
 import { addBusinessDays, businessDaysBetween, uid } from '@/lib/utils'
-import { addDays, differenceInCalendarDays, parseISO } from 'date-fns'
+import { addDays, addMonths, differenceInCalendarDays, parseISO } from 'date-fns'
 
 const CURRENT_USER = 'Cosmin'
 
@@ -86,6 +86,7 @@ interface Actions {
   removeTimeOff: (id: ID) => void
 
   scheduleRetouch: (jobId: ID) => void
+  scheduleDetailingFollowUp: (jobId: ID) => void
   markNotificationSent: (id: ID) => void
   cancelNotification: (id: ID) => void
   addNotification: (n: Omit<Notification, 'id'>) => void
@@ -159,7 +160,13 @@ export const useStore = create<Store>()(
           .jobs.map((x) => Number(x.code.replace(/\D/g, '')))
           .filter((n) => !Number.isNaN(n))
         const next = (nums.length ? Math.max(...nums) : 2030) + 1
-        const estimateMin = j.estimateMin ?? estimateRounded(j.services.map((s) => s.kind))
+        const estimateMin =
+          j.estimateMin ??
+          estimateRounded(
+            j.services.map((s) => s.kind),
+            get().settings,
+            get().cars.find((c) => c.id === j.carId)?.bodyType,
+          )
         const workStartAt = j.workStartAt ?? j.startAt
         const workEndAt =
           j.workEndAt ?? new Date(new Date(workStartAt).getTime() + estimateMin * 60_000).toISOString()
@@ -210,7 +217,10 @@ export const useStore = create<Store>()(
               : j,
           ),
         }))
-        if (status === 'finalizat') get().scheduleRetouch(id)
+        if (status === 'finalizat') {
+          get().scheduleRetouch(id)
+          get().scheduleDetailingFollowUp(id)
+        }
       },
 
       addJobPhoto: (id, photo) =>
@@ -387,6 +397,43 @@ export const useStore = create<Store>()(
         get().toast('Notificări retuș programate (7 zile lucrătoare + reminder)', 'info')
       },
 
+      /**
+       * Follow-up comercial: la 6 luni după un detailing (interior sau exterior) clientul
+       * primește o invitație cu 10% reducere — umple locurile libere din calendar.
+       */
+      scheduleDetailingFollowUp: (jobId) => {
+        const job = get().jobs.find((j) => j.id === jobId)
+        if (!job) return
+        const hasDetailing = job.services.some(
+          (s) =>
+            s.kind === 'detailing' &&
+            (s.values.interior === 'Da' || (s.values.exterior && s.values.exterior !== 'Nu')),
+        )
+        if (!hasDetailing) return
+        const already = get().notifications.some(
+          (n) => n.jobId === jobId && n.kind === 'detailing_6l' && n.status !== 'anulata',
+        )
+        if (already) return
+
+        set((s) => ({
+          notifications: [
+            {
+              id: uid(),
+              jobId,
+              clientId: job.clientId,
+              kind: 'detailing_6l' as const,
+              channel: 'whatsapp' as const,
+              dueAt: addMonths(new Date(), 6).toISOString(),
+              status: 'programata' as const,
+              message: `Custom Tuning: au trecut 6 luni de la detailingul mașinii tale (${job.code}). Te invităm la o nouă ședință de detailing cu 10% reducere, în limita locurilor libere din calendar. Programează-te la 0722 000 000!`,
+              sentAt: null,
+            },
+            ...s.notifications,
+          ],
+        }))
+        get().toast('Invitație detailing programată la 6 luni (−10%)', 'info')
+      },
+
       markNotificationSent: (id) =>
         set((s) => ({
           notifications: s.notifications.map((n) =>
@@ -404,7 +451,7 @@ export const useStore = create<Store>()(
     }),
     {
       name: 'custom-tuning-mvp',
-      version: 5,
+      version: 6,
       partialize: ({
         clients,
         cars,
@@ -428,8 +475,13 @@ export const useStore = create<Store>()(
         settings,
         currentUserId,
       }),
-      /** Schema s-a schimbat de mai multe ori în MVP — pornim de la seed curat. */
-      migrate: (persisted, version) => (version < 5 ? buildSeed() : (persisted as Store)),
+      /** Schema s-a schimbat de mai multe ori în MVP — pornim de la seed curat sub v5.
+       *  v5 → v6: setările primesc durate de manoperă + factori pe tip de mașină. */
+      migrate: (persisted, version) => {
+        if (version < 5) return buildSeed()
+        const p = persisted as Store
+        return { ...p, settings: { ...defaultSettings(), ...p.settings } }
+      },
     },
   ),
 )

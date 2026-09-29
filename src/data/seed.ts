@@ -1,7 +1,23 @@
 import { addDays, setHours, setMinutes, startOfDay, subDays } from 'date-fns'
-import type { DB, Job, JobStatus, ServiceEntry, ServiceKind } from './types'
-import { BODY_ELEMENTS, estimateRounded, serviceDef } from './serviceCatalog'
+import type { DB, Job, JobStatus, ServiceEntry, ServiceKind, Settings } from './types'
+import { BODY_ELEMENTS, CAR_TYPES, estimateRounded, serviceDef } from './serviceCatalog'
 import { uid } from '@/lib/utils'
+
+/** Setările implicite — folosite la seed și la migrarea datelor persistate mai vechi. */
+export const defaultSettings = (): Settings => ({
+  companyName: 'Custom Tuning SRL',
+  vatId: 'RO12345678',
+  vatPayer: true,
+  /** cota standard în România de la 1 august 2025 */
+  vatRate: 21,
+  /** prețurile din fișe sunt cele finale, afișate clientului */
+  pricesIncludeVat: true,
+  /** gol = se folosesc duratele din catalogul de servicii */
+  serviceDurationMin: {},
+  carTypeFactor: Object.fromEntries(
+    CAR_TYPES.map((c) => [c.value, c.defaultFactor]),
+  ) as Settings['carTypeFactor'],
+})
 
 const iso = (d: Date) => d.toISOString()
 const at = (dayOffset: number, hour: number, min = 0) =>
@@ -408,6 +424,7 @@ export const buildSeed = (): DB => {
   const cars: DB['cars'] = [
     {
       id: A.m4,
+      bodyType: 'coupe_sport',
       clientId: C.vlad,
       make: 'BMW',
       model: 'M4 Competition',
@@ -422,6 +439,7 @@ export const buildSeed = (): DB => {
     },
     {
       id: A.amg,
+      bodyType: 'sedan',
       clientId: C.vlad,
       make: 'Mercedes-AMG',
       model: 'C63 S',
@@ -436,6 +454,7 @@ export const buildSeed = (): DB => {
     },
     {
       id: A.golf,
+      bodyType: 'compacta',
       clientId: C.ana,
       make: 'Volkswagen',
       model: 'Golf 8 GTI',
@@ -450,6 +469,7 @@ export const buildSeed = (): DB => {
     },
     {
       id: A.rs6,
+      bodyType: 'break',
       clientId: C.tribus,
       make: 'Audi',
       model: 'RS6 Avant',
@@ -464,6 +484,7 @@ export const buildSeed = (): DB => {
     },
     {
       id: A.q3,
+      bodyType: 'suv',
       clientId: C.mihai,
       make: 'Audi',
       model: 'Q3 Sportback',
@@ -478,6 +499,7 @@ export const buildSeed = (): DB => {
     },
     {
       id: A.tesla,
+      bodyType: 'sedan',
       clientId: C.elena,
       make: 'Tesla',
       model: 'Model 3 Performance',
@@ -492,6 +514,7 @@ export const buildSeed = (): DB => {
     },
     {
       id: A.supra,
+      bodyType: 'coupe_sport',
       clientId: C.rares,
       make: 'Toyota',
       model: 'GR Supra',
@@ -654,6 +677,18 @@ export const buildSeed = (): DB => {
       dueAt: at(-5, 10),
       status: 'programata',
       message: 'Custom Tuning: reamintire — retușul foliei este încă disponibil. Te așteptăm!',
+      sentAt: null,
+    },
+    {
+      id: uid(),
+      jobId: done2.id,
+      clientId: C.mihai,
+      kind: 'detailing_6l',
+      channel: 'whatsapp',
+      dueAt: at(165, 10),
+      status: 'programata',
+      message:
+        'Custom Tuning: au trecut 6 luni de la detailingul mașinii tale. Te invităm la o nouă ședință de detailing cu 10% reducere, în limita locurilor libere din calendar. Programează-te la 0722 000 000!',
       sentAt: null,
     },
   ]
@@ -828,15 +863,7 @@ export const buildSeed = (): DB => {
     notifications,
     staff,
     timeOff,
-    settings: {
-      companyName: 'Custom Tuning SRL',
-      vatId: 'RO12345678',
-      vatPayer: true,
-      /** cota standard în România de la 1 august 2025 */
-      vatRate: 21,
-      /** prețurile din fișe sunt cele finale, afișate clientului */
-      pricesIncludeVat: true,
-    },
+    settings: defaultSettings(),
     currentUserId: 'stf-cosmin',
   }
 }

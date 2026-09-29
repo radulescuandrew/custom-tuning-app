@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import type { ElementEntry, ServiceEntry, StockItem } from '@/data/types'
-import { BODY_ELEMENTS, serviceDef, type FieldDef } from '@/data/serviceCatalog'
+import type { CarBodyType, ElementEntry, ServiceEntry, StockItem } from '@/data/types'
+import { BODY_ELEMENTS, estimateFoilMeters, serviceDef, type FieldDef } from '@/data/serviceCatalog'
 import { Badge, Button, Field, Input, Select, Textarea } from './ui'
+import { SegmentedControl } from './ui/SegmentedControl'
 import { IconPlus, IconTrash } from './Icons'
 import { cx, uid } from '@/lib/utils'
 import { useSettings } from '@/data/store'
@@ -21,9 +22,11 @@ interface Props {
   entry: ServiceEntry
   stock: StockItem[]
   onChange: (patch: Partial<ServiceEntry>) => void
+  /** tipul caroseriei mașinii din programare — pentru estimarea consumului de folie */
+  bodyType?: CarBodyType | ''
 }
 
-export default function ServiceForm({ entry, stock, onChange }: Props) {
+export default function ServiceForm({ entry, stock, onChange, bodyType }: Props) {
   const def = serviceDef(entry.kind)
   const settings = useSettings()
   const [extra, setExtra] = useState('')
@@ -62,13 +65,58 @@ export default function ServiceForm({ entry, stock, onChange }: Props) {
   const visible = (f: FieldDef) =>
     !f.showIf || f.showIf.equals.includes(entry.values[f.showIf.key] ?? '')
 
+  /** Golește câmpurile grupurilor ascunse, altfel rămâne consum fantomă din rola cealaltă. */
+  const switchVariant = (variantKey: string, value: string) => {
+    const hidden = def.groups.filter((g) => g.variantKey === variantKey && g.variantValue !== value)
+    const hiddenFields = hidden.flatMap((g) => g.fields)
+    const hiddenRollIds = hiddenFields
+      .filter((f) => f.type === 'roll')
+      .map((f) => entry.values[f.key])
+      .filter(Boolean)
+    const values = { ...entry.values, [variantKey]: value }
+    hiddenFields.forEach((f) => delete values[f.key])
+    onChange({
+      values,
+      rollUsages: entry.rollUsages.filter((u) => !hiddenRollIds.includes(u.stockItemId)),
+    })
+  }
+
   const renderField = (f: FieldDef) => {
     const value = entry.values[f.key] ?? ''
     if (f.type === 'roll') {
       const opts = stock.filter((s) => s.category === f.stockCategory)
+      const selected = stock.find((s) => s.id === value)
+      /** Producătorul și finisajul vin din rolă — nu se mai completează de mână.
+       *  La alegere se propune consumul estimat după caroserie; se corectează la final. */
+      const pickRoll = (id: string) => {
+        const values = { ...entry.values, [f.key]: id }
+        let usages = entry.rollUsages
+        if (value && value !== id)
+          usages = usages.filter((u) => !(u.stockItemId === value && !u.appliedAt))
+        const est = estimateFoilMeters(entry.kind, settings, bodyType)
+        if (id && est && !usages.some((u) => u.stockItemId === id)) {
+          usages = [...usages, { id: uid(), stockItemId: id, qty: est, appliedAt: null }]
+          if (!values.metersUsed) values.metersUsed = String(est)
+        }
+        onChange({ values, rollUsages: usages })
+      }
       return (
-        <Field key={f.key} label={f.label} hint="Numărul rolei se preia automat în fișă și în consum.">
-          <Select value={value} onChange={(e) => setValue(f.key, e.target.value)}>
+        <Field
+          key={f.key}
+          label={f.label}
+          hint={
+            selected
+              ? [
+                  selected.maker,
+                  selected.name,
+                  selected.finish === 'lucioasa' ? 'lucioasă' : selected.finish === 'mata' ? 'mată' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : 'Numărul rolei se preia automat în fișă și în consum.'
+          }
+        >
+          <Select value={value} onChange={(e) => pickRoll(e.target.value)}>
             <option value="">— alege rola —</option>
             {opts.map((o) => (
               <option key={o.id} value={o.id}>
@@ -112,15 +160,36 @@ export default function ServiceForm({ entry, stock, onChange }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      {def.groups.map((g) => (
-        <div key={g.title}>
-          <div className="mono-label mb-3 flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: def.accent }} />
-            {g.title}
+      {def.groups.map((g) => {
+        if (g.variantKey) {
+          const variants = def.groups.filter((x) => x.variantKey === g.variantKey)
+          if (variants[0] !== g) return null
+          const active = entry.values[g.variantKey] || variants[0].variantValue!
+          const shown = variants.find((x) => x.variantValue === active) ?? variants[0]
+          return (
+            <div key={g.variantKey}>
+              <SegmentedControl
+                className="mb-4 max-w-sm"
+                options={variants.map((v) => ({ value: v.variantValue!, label: v.title }))}
+                value={active}
+                onChange={(v) => switchVariant(g.variantKey!, v)}
+              />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {shown.fields.filter(visible).map(renderField)}
+              </div>
+            </div>
+          )
+        }
+        return (
+          <div key={g.title}>
+            <div className="mono-label mb-3 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: def.accent }} />
+              {g.title}
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{g.fields.filter(visible).map(renderField)}</div>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{g.fields.filter(visible).map(renderField)}</div>
-        </div>
-      ))}
+        )
+      })}
 
       {selectedRolls.length > 0 && (
         <div>
@@ -166,6 +235,7 @@ export default function ServiceForm({ entry, stock, onChange }: Props) {
             })}
           </div>
           <p className="mt-2 text-[12px] text-fg-faint">
+            Consumul propus e estimat după caroserie — corectează-l dacă au fost pierderi.
             Scăderea efectivă din stoc se face la trecerea lucrării în „Finalizat”.
           </p>
         </div>

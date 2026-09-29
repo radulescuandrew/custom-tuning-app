@@ -9,6 +9,7 @@ import CarModal from '@/components/modals/CarModal'
 import { SERVICE_CATALOG, estimateRounded, serviceDef } from '@/data/serviceCatalog'
 import type { ServiceEntry, ServiceKind } from '@/data/types'
 import { carName, clientName, useStore } from '@/data/store'
+import { findFreeSlots } from '@/lib/slots'
 import { cx, fmtDateTime, toLocalInput, uid } from '@/lib/utils'
 import { Money, TotalBreakdown } from '@/components/Money'
 import { IconPlus } from '@/components/Icons'
@@ -18,7 +19,7 @@ const STEPS = ['Client', 'Mașină', 'Servicii', 'Program & execuție']
 export default function JobNewPage() {
   const nav = useNavigate()
   const [params] = useSearchParams()
-  const { clients, cars, stock, addJob, toast } = useStore()
+  const { clients, cars, stock, jobs, timeOff, settings, addJob, toast } = useStore()
 
   const preset = useMemo(() => {
     const kinds = (params.get('services') ?? '')
@@ -66,13 +67,23 @@ export default function JobNewPage() {
   const clientCars = useMemo(() => cars.filter((c) => c.clientId === clientId), [cars, clientId])
   const total = services.reduce((s, x) => s + (x.price || 0), 0)
   const suggestedMin = useMemo(
-    () => estimateRounded(services.map((s) => s.kind)),
-    [services],
+    () =>
+      estimateRounded(
+        services.map((s) => s.kind),
+        settings,
+        cars.find((c) => c.id === carId)?.bodyType,
+      ),
+    [services, settings, cars, carId],
   )
   useEffect(() => {
     if (!estimateTouched) setEstimateMin(suggestedMin)
   }, [suggestedMin, estimateTouched])
   const workEnd = new Date(new Date(workStartAt).getTime() + estimateMin * 60_000)
+  /** intervale libere din calendar în care încape execuția — sugestii, nu obligatorii */
+  const freeSlots = useMemo(
+    () => findFreeSlots(jobs, timeOff, estimateMin),
+    [jobs, timeOff, estimateMin],
+  )
 
   const toggleService = (kind: ServiceKind) => {
     setServices((prev) => {
@@ -284,10 +295,19 @@ export default function JobNewPage() {
                         onClick={() => toggleService(s.kind)}
                         style={on ? { borderColor: `${s.accent}80`, background: `${s.accent}14` } : {}}
                         className={cx(
-                          'rounded-lg border px-3.5 py-2 text-[13px] font-semibold transition',
+                          'flex items-center gap-2 rounded-lg border px-3.5 py-2 text-[13px] font-semibold transition',
                           on ? 'text-fg' : 'border-line bg-ink-750/60 text-fg-mute hover:text-fg',
                         )}
                       >
+                        <span
+                          className={cx(
+                            'flex h-4 w-4 flex-none items-center justify-center rounded border text-[10px] font-bold text-white',
+                            on ? 'border-transparent' : 'border-line-strong',
+                          )}
+                          style={on ? { background: s.accent } : {}}
+                        >
+                          {on ? '✓' : ''}
+                        </span>
                         {s.label}
                       </button>
                     )
@@ -325,11 +345,13 @@ export default function JobNewPage() {
                       <ServiceForm
                         entry={svc}
                         stock={stock}
+                        bodyType={cars.find((c) => c.id === carId)?.bodyType}
                         onChange={(patch) => patchService(svc.id, patch)}
                       />
                     ) : (
                       <p className="text-[13px] text-fg-mute">
-                        <Money value={svc.price} /> ·{' '}
+                        Preț estimat: <Money value={svc.price} />{' '}
+                        <span className="text-fg-faint">(orientativ — se editează în fișă)</span> ·{' '}
                         {svc.elements.filter((e) => e.checked).length || 0} elemente bifate
                       </p>
                     )}
@@ -433,6 +455,37 @@ export default function JobNewPage() {
                     </div>
                   </Field>
                 </div>
+
+                {freeSlots.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mono-label mb-2">Intervale libere din calendar</div>
+                    <div className="flex flex-wrap gap-2">
+                      {freeSlots.map((s) => {
+                        const iso = s.start.toISOString()
+                        const active = toLocalInput(iso) === workStartAt
+                        return (
+                          <button
+                            key={iso}
+                            onClick={() => setWorkStartAt(toLocalInput(iso))}
+                            className={cx(
+                              'rounded-lg border px-3 py-1.5 font-mono text-[12px] transition',
+                              active
+                                ? 'border-brand-500/50 bg-brand-500/12 text-brand-400'
+                                : 'border-line bg-ink-750/60 text-fg-mute hover:text-fg',
+                            )}
+                          >
+                            {fmtDateTime(iso)}
+                            {s.days > 1 && ` · ${s.days} zile`}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="mt-2 text-[11.5px] text-fg-faint">
+                      Calculate pe programul 09–18, ocolind execuțiile deja programate și zilele cu
+                      atelier închis.
+                    </p>
+                  </div>
+                )}
 
                 <div className="mt-4 rounded-lg border border-line bg-ink-750/60 p-4">
                   <div className="mono-label mb-2">Fereastră execuție</div>

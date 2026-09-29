@@ -84,7 +84,10 @@ export default function QuickCreateModal({
   }, [range, staff])
 
   const clientCars = useMemo(() => cars.filter((c) => c.clientId === clientId), [cars, clientId])
-  const suggested = useMemo(() => estimateRounded(kinds), [kinds])
+  const suggested = useMemo(
+    () => estimateRounded(kinds, settings, cars.find((c) => c.id === carId)?.bodyType),
+    [kinds, settings, cars, carId],
+  )
   useEffect(() => {
     if (!estimateTouched) setEstimate(suggested)
   }, [suggested, estimateTouched])
@@ -298,10 +301,19 @@ export default function QuickCreateModal({
                     }
                     style={on ? { borderColor: `${s.accent}80`, background: `${s.accent}18` } : {}}
                     className={cx(
-                      'rounded-lg border px-3 py-1.5 text-[13px] font-semibold transition',
+                      'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13px] font-semibold transition',
                       on ? 'text-fg' : 'border-line bg-ink-750/60 text-fg-mute hover:text-fg',
                     )}
                   >
+                    <span
+                      className={cx(
+                        'flex h-4 w-4 flex-none items-center justify-center rounded border text-[10px] font-bold text-white',
+                        on ? 'border-transparent' : 'border-line-strong',
+                      )}
+                      style={on ? { background: s.accent } : {}}
+                    >
+                      {on ? '✓' : ''}
+                    </span>
                     {s.label}
                   </button>
                 )
@@ -309,9 +321,9 @@ export default function QuickCreateModal({
             </div>
             {kinds.length > 0 && (
               <p className="mt-2 text-[12.5px] text-fg-mute">
-                Estimare: <span className="font-mono text-brand-400">{fmt(total)}</span>
-                {settings.vatPayer && ` (TVA ${settings.vatRate}% inclus)`} · fișele detaliate se
-                completează în pagina programării.
+                Preț estimat (de listă): <span className="font-mono text-brand-400">{fmt(total)}</span>
+                {settings.vatPayer && ` (TVA ${settings.vatRate}% inclus)`} — orientativ, prețul
+                real se trece în fișa serviciului din pagina programării.
               </p>
             )}
           </div>

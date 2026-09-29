@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { amounts, fmtRon } from './money'
+import { defaultSettings } from '@/data/seed'
 import type { Settings } from '@/data/types'
 
 const base: Settings = {
-  companyName: 'Custom Tuning SRL',
-  vatId: 'RO12345678',
+  ...defaultSettings(),
   vatPayer: true,
   vatRate: 21,
   pricesIncludeVat: true,

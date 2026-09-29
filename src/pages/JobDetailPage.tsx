@@ -38,6 +38,7 @@ export default function JobDetailPage() {
     addJobPhoto,
     removeJobPhoto,
     markNotificationSent,
+    settings,
     toast,
   } = useStore()
 
@@ -312,6 +313,7 @@ export default function JobDetailPage() {
                   <ServiceForm
                     entry={svc}
                     stock={stock}
+                    bodyType={car?.bodyType}
                     onChange={(patch) => patchService(svc.id, patch)}
                   />
                 ) : (
@@ -615,7 +617,7 @@ export default function JobDetailPage() {
               }}
             />
           </Field>
-          <Field label="Timp de lucru estimat (min)" hint={`Sugestie din servicii: ${estimateRounded(job.services.map((s) => s.kind))} min`}>
+          <Field label="Timp de lucru estimat (min)" hint={`Sugestie din servicii: ${estimateRounded(job.services.map((s) => s.kind), settings, car?.bodyType)} min`}>
             <Input
               type="number"
               step={15}
