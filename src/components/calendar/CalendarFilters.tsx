@@ -24,7 +24,7 @@ const STATUSES: (JobStatus | 'toate')[] = [
   'toate',
   'programat',
   'in_lucru',
-  'asteapta_piese',
+  'blocat',
   'finalizat',
   'predat',
 ]

@@ -1,4 +1,4 @@
-import type { CarBodyType, ServiceKind, Settings, StockCategory } from './types'
+import type { CarBodyType, CarClass, ServiceEntry, ServiceKind, Settings, StockCategory } from './types'
 
 export type FieldType = 'text' | 'number' | 'select' | 'textarea' | 'roll'
 
@@ -32,7 +32,7 @@ export interface ServiceDef {
   groups: GroupDef[]
   /** are lista de elemente de caroserie (cu cod produs / cod folie per element) */
   elements: boolean
-  /** urmareste retusul la 7 zile lucratoare (spec: colantare) */
+  /** urmărește retușul după predare (oferta: colantare, inclusiv folii geamuri și parbriz) */
   retouch: boolean
   defaultPrice: number
   /** manopera estimata, in minute — folosita pentru sugestia de timp de lucru */
@@ -68,6 +68,122 @@ export const CERAMIC_PRODUCTS = [
   'Krytex Mega Rims',
   'Krytex Mega Tex',
 ]
+
+/* ───────── grila de prețuri pe clasă de mașină (RON, orientativ, editabil în fișă) ───────── */
+
+export const CAR_CLASSES: { value: CarClass; label: string }[] = [
+  { value: 'medie', label: 'Medie' },
+  { value: 'mare', label: 'Mare' },
+  { value: 'supercar', label: 'Supercar' },
+]
+
+export const carClassLabel = (c: CarClass) => CAR_CLASSES.find((x) => x.value === c)!.label
+
+/** [medie, mare, supercar] */
+export type Tier = [number, number, number]
+const TIER: Record<CarClass, 0 | 1 | 2> = { medie: 0, mare: 1, supercar: 2 }
+
+export const CERAMIC_PRICES: Record<string, Tier> = {
+  'Krytex 7H': [2200, 2700, 3500],
+  'Krytex Mega 8': [2900, 3500, 4500],
+  'Krytex 9H + Mega 8': [3800, 4600, 5900],
+  'Krytex Mega Glass': [450, 550, 700],
+  'Krytex Mega Leather': [600, 800, 1100],
+  'Krytex Mega Rims': [700, 800, 1200],
+  'Krytex Mega Tex': [400, 500, 700],
+}
+
+const INTERIOR_PRICE: Tier = [700, 900, 1300]
+const EXTERIOR_PRICES: Record<string, Tier> = {
+  'Un pas': [400, 500, 800],
+  'Doi pași': [700, 900, 1400],
+  'Trei pași': [1100, 1400, 2200],
+}
+export const POLISH_PRICES: Record<string, Tier> = {
+  'One-step (finisare)': [1200, 1500, 2400],
+  'Two-step (corectiv)': [2000, 2500, 3800],
+}
+
+/** Clasa propusă din caroserie: SUV-urile sunt „mare”; supercar se alege de mână. */
+export const suggestCarClass = (bodyType?: CarBodyType | ''): CarClass =>
+  bodyType === 'suv' || bodyType === 'suv_mare' ? 'mare' : 'medie'
+
+export const effectiveCarClass = (car?: { carClass?: CarClass | ''; bodyType?: CarBodyType | '' }) =>
+  car?.carClass || suggestCarClass(car?.bodyType)
+
+/**
+ * Prețul din grilă pentru o fișă de detailing / ceramică, după opțiunile bifate.
+ * null = serviciul nu are grilă sau nu e nimic ales (rămâne prețul curent).
+ */
+/**
+ * Rândurile grilei de prețuri: o opțiune din fișă → prețul ei pe cele 3 clase.
+ * Valorile de aici sunt implicite; Setări → „Servicii & prețuri” le poate suprascrie.
+ */
+export interface GridRow {
+  key: string
+  kind: 'detailing' | 'ceramica'
+  label: string
+  base: Tier
+  match: (values: Record<string, string>) => boolean
+}
+
+export const GRID_ROWS: GridRow[] = [
+  { key: 'detailing:interior', kind: 'detailing', label: 'Detailing interior', base: INTERIOR_PRICE, match: (v) => v.interior === 'Da' },
+  ...Object.entries(EXTERIOR_PRICES).map(([opt, base]) => ({
+    key: `detailing:exterior:${opt}`,
+    kind: 'detailing' as const,
+    label: `Exterior · ${opt.toLowerCase()}`,
+    base,
+    match: (v: Record<string, string>) => v.exterior === opt,
+  })),
+  ...Object.entries(POLISH_PRICES).map(([opt, base]) => ({
+    key: `detailing:polish:${opt}`,
+    kind: 'detailing' as const,
+    label: `Polish · ${opt}`,
+    base,
+    match: (v: Record<string, string>) => v.polish === opt,
+  })),
+  ...CERAMIC_PRODUCTS.map((p) => ({
+    key: `ceramica:${p}`,
+    kind: 'ceramica' as const,
+    label: p,
+    base: CERAMIC_PRICES[p],
+    match: (v: Record<string, string>) => v[`${p}__used`] === 'Da',
+  })),
+]
+
+/** prețurile unui rând pe cele 3 clase: din Setări dacă au fost schimbate, altfel implicite */
+export const gridTier = (row: GridRow, settings?: Pick<Settings, 'gridPrices'>) =>
+  settings?.gridPrices?.[row.key] ?? row.base
+
+export const gridPrice = (
+  kind: ServiceKind,
+  values: Record<string, string>,
+  cls: CarClass,
+  settings?: Pick<Settings, 'gridPrices'>,
+): number | null => {
+  if (kind !== 'detailing' && kind !== 'ceramica') return null
+  const t = TIER[cls]
+  const sum = GRID_ROWS.filter((r) => r.kind === kind && r.match(values)).reduce(
+    (acc, r) => acc + gridTier(r, settings)[t],
+    0,
+  )
+  return sum > 0 ? sum : null
+}
+
+/** Prețul orientativ propus la adăugarea serviciului (Setări → altfel catalogul). */
+export const servicePrice = (kind: ServiceKind, settings?: Pick<Settings, 'servicePrice'>) =>
+  settings?.servicePrice?.[kind] ?? SERVICE_CATALOG.find((d) => d.kind === kind)!.defaultPrice
+
+/** Serviciile oferite la programări noi (cele dezactivate din Setări nu apar). */
+export const activeServices = (settings?: Pick<Settings, 'serviceDisabled'>) =>
+  SERVICE_CATALOG.filter((d) => !settings?.serviceDisabled?.includes(d.kind))
+
+/** Numele afișat al unei fișe — la „Custom” e denumirea scrisă de operator. */
+export const serviceLabel = (entry: Pick<ServiceEntry, 'kind' | 'values'>) =>
+  entry.kind === 'custom' && entry.values.title?.trim()
+    ? entry.values.title.trim()
+    : SERVICE_CATALOG.find((d) => d.kind === entry.kind)!.label
 
 export const SERVICE_CATALOG: ServiceDef[] = [
   {
@@ -110,7 +226,7 @@ export const SERVICE_CATALOG: ServiceDef[] = [
     short: 'Geamuri',
     accent: '#7d8189',
     elements: false,
-    retouch: false,
+    retouch: true,
     defaultPrice: 1200,
     estimateMin: 180,
     estimateMeters: 5,
@@ -142,7 +258,7 @@ export const SERVICE_CATALOG: ServiceDef[] = [
     short: 'Parbriz',
     accent: '#556074',
     elements: false,
-    retouch: false,
+    retouch: true,
     defaultPrice: 3200,
     estimateMin: 120,
     estimateMeters: 2,
@@ -204,6 +320,7 @@ export const SERVICE_CATALOG: ServiceDef[] = [
           { key: 'et', label: 'ET', type: 'text', placeholder: 'ET35 / ET40' },
           { key: 'color', label: 'Culoare jante', type: 'text' },
           { key: 'tyres', label: 'Dimensiune anvelope', type: 'text', placeholder: '275/35 R20' },
+          { key: 'description', label: 'Descriere lucrare / mențiuni', type: 'textarea' },
         ],
       },
     ],
@@ -223,6 +340,7 @@ export const SERVICE_CATALOG: ServiceDef[] = [
         fields: [
           { key: 'partsMaker', label: 'Producător piese', type: 'text' },
           { key: 'material', label: 'Material', type: 'select', options: ['—', 'Carbon', 'ABS', 'Fibră de sticlă', 'PP'] },
+          { key: 'description', label: 'Descriere lucrare / mențiuni', type: 'textarea' },
         ],
       },
     ],
@@ -295,6 +413,7 @@ export const SERVICE_CATALOG: ServiceDef[] = [
           { key: 'maker', label: 'Producător evacuare', type: 'text', placeholder: 'Akrapovič, Remus…' },
           { key: 'code', label: 'Cod evacuare', type: 'text' },
           { key: 'valves', label: 'Valve / telecomandă', type: 'select', options: ['—', 'Da', 'Nu'] },
+          { key: 'description', label: 'Descriere lucrare / mențiuni', type: 'textarea' },
         ],
       },
     ],
@@ -323,6 +442,12 @@ export const SERVICE_CATALOG: ServiceDef[] = [
             label: 'Detailing exterior',
             type: 'select',
             options: ['Nu', 'Un pas', 'Doi pași', 'Trei pași'],
+          },
+          {
+            key: 'polish',
+            label: 'Polish',
+            type: 'select',
+            options: ['Nu', ...Object.keys(POLISH_PRICES)],
           },
           { key: 'crew', label: 'Executat de', type: 'text' },
           { key: 'obs', label: 'Observații', type: 'textarea' },
@@ -354,10 +479,43 @@ export const SERVICE_CATALOG: ServiceDef[] = [
       },
     ],
   },
+  {
+    kind: 'custom',
+    label: 'Custom',
+    short: 'Lucrare la cerere',
+    accent: '#6b7280',
+    elements: false,
+    retouch: false,
+    /** fără preț orientativ — se completează de mână (oferta) */
+    defaultPrice: 0,
+    estimateMin: 120,
+    groups: [
+      {
+        title: 'Lucrare',
+        fields: [
+          {
+            key: 'title',
+            label: 'Denumire lucrare',
+            type: 'text',
+            placeholder: 'Montaj lumini ambientale, body kit custom…',
+          },
+          { key: 'description', label: 'Descriere', type: 'textarea' },
+          { key: 'parts', label: 'Piese / coduri produs', type: 'textarea', placeholder: 'opțional' },
+          { key: 'hours', label: 'Durată estimată', type: 'number', suffix: 'ore' },
+        ],
+      },
+    ],
+  },
 ]
 
 export const serviceDef = (kind: ServiceKind) =>
   SERVICE_CATALOG.find((s) => s.kind === kind)!
+
+/** Câmpurile de tip rolă ale unui serviciu (colantare, folii) — din ele se scade stocul. */
+export const rollFields = (kind: ServiceKind) =>
+  serviceDef(kind)
+    .groups.flatMap((g) => g.fields)
+    .filter((f) => f.type === 'roll')
 
 /** Tipurile de caroserie și factorul de timp implicit — configurabil din Setări. */
 export const CAR_TYPES: { value: CarBodyType; label: string; defaultFactor: number }[] = [

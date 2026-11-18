@@ -15,10 +15,15 @@ export interface Client {
   vatId: string // RO-ul firmei / CUI
   notes: string
   createdAt: string
+  /** client „șters”: dispare din liste, dar mașinile, programările și documentele rămân */
+  archivedAt?: string | null
 }
 
 /** Tip caroserie — folosit la estimarea manoperei (SUV durează mai mult decât o compactă). */
 export type CarBodyType = 'compacta' | 'sedan' | 'break' | 'coupe_sport' | 'suv' | 'suv_mare'
+
+/** Clasa mașinii pentru grila de prețuri (oferta: „clasă medie, mare, supercar”). */
+export type CarClass = 'medie' | 'mare' | 'supercar'
 
 export interface Car {
   id: ID
@@ -27,6 +32,8 @@ export interface Car {
   model: string
   /** gol = necompletat, se folosește factorul 1 la estimări */
   bodyType?: CarBodyType | ''
+  /** gol = se propune din tipul de caroserie (vezi effectiveCarClass) */
+  carClass?: CarClass | ''
   year: number | null
   engine: string
   plate: string
@@ -40,7 +47,7 @@ export interface Car {
 export type JobStatus =
   | 'programat'
   | 'in_lucru'
-  | 'asteapta_piese'
+  | 'blocat'
   | 'finalizat'
   | 'predat'
   | 'anulat'
@@ -56,6 +63,7 @@ export type ServiceKind =
   | 'chip_tuning'
   | 'detailing'
   | 'ceramica'
+  | 'custom'
 
 /** Element de caroserie (bara fata, praguri, ...) folosit la colantare & tuning. */
 export interface ElementEntry {
@@ -78,7 +86,13 @@ export interface ServiceEntry {
   /** role consumate din stoc (colantare) */
   rollUsages: RollUsage[]
   price: number
+  /** true = prețul a fost scris de mână; altfel se recalculează din grilă la fiecare alegere */
+  priceManual?: boolean
   done: boolean
+  /** când a fost terminat serviciul (în timpul execuției) */
+  doneAt?: string | null
+  /** mesajul pentru client, afișat pe tracking sub serviciu */
+  doneNote?: string
 }
 
 export interface RollUsage {
@@ -96,13 +110,33 @@ export interface JobPhoto {
   name: string
   caption: string
   createdAt: string
+  /** apare pe pagina de tracking a clientului (implicit da) */
+  public?: boolean
+  /** poza „după” a unui serviciu finalizat; fără = poză de la primire / generală */
+  serviceId?: string
 }
+
+/** Tipul evenimentului — dă culoarea / gruparea în istoricul lucrării. */
+export type JobEventKind =
+  | 'create'
+  | 'status'
+  | 'reception'
+  | 'work'
+  | 'service'
+  | 'stock'
+  | 'notify'
+  | 'photo'
+  | 'plan'
+  | 'retouch'
 
 export interface JobEvent {
   id: ID
   at: string
   label: string
   by: string
+  kind?: JobEventKind
+  /** detalii afișate sub titlu (ce role, ce mesaj, ce motiv…) */
+  detail?: string
 }
 
 export interface Job {
@@ -116,6 +150,8 @@ export interface Job {
   startAt: string
   /** durata slotului de primire, în minute (default 30) */
   durationMin: number
+  /** PRIMIRE REALĂ — când mașina a ajuns efectiv în atelier (confirmată din fișă) */
+  receivedAt?: string | null
 
   /** EXECUȚIE PLANIFICATĂ — poate începe în aceeași zi sau mai târziu. */
   workStartAt: string | null
@@ -140,6 +176,12 @@ export interface Job {
   trackingToken: string
   createdAt: string
   completedAt: string | null
+  /** momentul în care clientul a ridicat mașina (status „Predat”) — de aici pornește retușul */
+  handedOverAt?: string | null
+  /** retușul (colantare / folii) a fost făcut — oprește reminderul */
+  retouchDoneAt?: string | null
+  /** de ce e lucrarea în „Blocat” (lipsă materiale, așteaptă piese…) — apare și clientului */
+  blockedReason?: string
 }
 
 export type StockCategory =
@@ -161,6 +203,8 @@ export interface StockItem {
   /** unitate: m pentru folie, buc pentru ceramica */
   unit: 'm' | 'buc'
   qty: number
+  /** lungimea nominală a rolei (m) — rolele se țin individual, cu metrii rămași în `qty` */
+  rollLength?: number
   minQty: number
   location: string
   createdAt: string
@@ -244,8 +288,16 @@ export interface Settings {
   vatRate: number
   /** prețurile din fișe sunt introduse cu TVA inclus (true) sau ca bază (false) */
   pricesIncludeVat: boolean
+  /** la „Finalizat”: true = mesajul de ridicare intră direct în coadă; false = se cere confirmare */
+  pickupNotifyAuto: boolean
   /** durate de manoperă (minute) per serviciu — suprascriu valorile din catalog */
   serviceDurationMin: Partial<Record<ServiceKind, number>>
+  /** preț orientativ per serviciu — suprascrie catalogul (se propune la adăugarea serviciului) */
+  servicePrice?: Partial<Record<ServiceKind, number>>
+  /** servicii scoase din ofertă — nu mai apar la programări noi */
+  serviceDisabled?: ServiceKind[]
+  /** grila pe clase (medie / mare / supercar) per opțiune, cheie din GRID_ROWS */
+  gridPrices?: Record<string, [number, number, number]>
   /** factor de timp per tip de caroserie (SUV 1.25 = +25% față de bază) */
   carTypeFactor: Record<CarBodyType, number>
 }

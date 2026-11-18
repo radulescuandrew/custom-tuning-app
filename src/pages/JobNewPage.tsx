@@ -6,13 +6,21 @@ import { Badge, Button, Card, Field, Input, Select, Textarea } from '@/component
 import ServiceForm from '@/components/ServiceForm'
 import ClientModal from '@/components/modals/ClientModal'
 import CarModal from '@/components/modals/CarModal'
-import { SERVICE_CATALOG, estimateRounded, serviceDef } from '@/data/serviceCatalog'
+import {
+  activeServices,
+  servicePrice,
+  effectiveCarClass,
+  estimateRounded,
+  serviceDef,
+  serviceLabel,
+} from '@/data/serviceCatalog'
 import type { ServiceEntry, ServiceKind } from '@/data/types'
-import { carName, clientName, useStore } from '@/data/store'
+import { activeClients, carName, clientName, useStore } from '@/data/store'
 import { findFreeSlots } from '@/lib/slots'
 import { cx, fmtDateTime, toLocalInput, uid } from '@/lib/utils'
 import { Money, TotalBreakdown } from '@/components/Money'
 import { IconPlus } from '@/components/Icons'
+import { StickyBar } from '@/components/ui/StickyBar'
 
 const STEPS = ['Client', 'Mașină', 'Servicii', 'Program & execuție']
 
@@ -39,7 +47,7 @@ export default function JobNewPage() {
         values: {},
         elements: [],
         rollUsages: [],
-        price: serviceDef(k).defaultPrice,
+        price: servicePrice(k, useStore.getState().settings),
         done: false,
       })),
     }
@@ -50,15 +58,15 @@ export default function JobNewPage() {
   const [clientId, setClientId] = useState(preset.clientId)
   const [carId, setCarId] = useState(preset.carId)
   const [services, setServices] = useState<ServiceEntry[]>(preset.services)
-  const [activeSvc, setActiveSvc] = useState<ServiceKind | null>(preset.services[0]?.kind ?? null)
+  /** fișa deschisă, după id (Custom poate apărea de mai multe ori) */
+  const [activeSvc, setActiveSvc] = useState<string | null>(preset.services[0]?.id ?? null)
   const [startAt, setStartAt] = useState(toLocalInput(preset.start))
   const [durationMin, setDurationMin] = useState(preset.duration)
-  const [workStartAt, setWorkStartAt] = useState(
-    toLocalInput(preset.work || preset.start),
-  )
+  /** gol = execuția se planifică mai târziu (de obicei după ce vine mașina);
+   *  precompletat doar când intervalul a fost ales explicit în calendar */
+  const [workStartAt, setWorkStartAt] = useState(preset.work ? toLocalInput(preset.work) : '')
   const [estimateMin, setEstimateMin] = useState(preset.estimate || 0)
   const [estimateTouched, setEstimateTouched] = useState(Boolean(preset.estimate))
-  const [deliveryAt, setDeliveryAt] = useState(preset.delivery ? toLocalInput(preset.delivery) : '')
   const [assignee, setAssignee] = useState(() => useStore.getState().staff[0]?.name ?? '')
   const [notes, setNotes] = useState('')
   const [clientModal, setClientModal] = useState(false)
@@ -78,40 +86,57 @@ export default function JobNewPage() {
   useEffect(() => {
     if (!estimateTouched) setEstimateMin(suggestedMin)
   }, [suggestedMin, estimateTouched])
-  const workEnd = new Date(new Date(workStartAt).getTime() + estimateMin * 60_000)
+  const workEnd = workStartAt
+    ? new Date(new Date(workStartAt).getTime() + estimateMin * 60_000)
+    : null
   /** intervale libere din calendar în care încape execuția — sugestii, nu obligatorii */
   const freeSlots = useMemo(
     () => findFreeSlots(jobs, timeOff, estimateMin),
     [jobs, timeOff, estimateMin],
   )
 
+  const newEntry = (kind: ServiceKind): ServiceEntry => ({
+    id: uid(),
+    kind,
+    values: {},
+    elements: [],
+    rollUsages: [],
+    price: servicePrice(kind, settings),
+    done: false,
+  })
+
   const toggleService = (kind: ServiceKind) => {
-    setServices((prev) => {
-      const has = prev.find((s) => s.kind === kind)
-      if (has) {
-        if (activeSvc === kind) setActiveSvc(null)
-        return prev.filter((s) => s.kind !== kind)
-      }
-      setActiveSvc(kind)
-      return [
-        ...prev,
-        {
-          id: uid(),
-          kind,
-          values: {},
-          elements: [],
-          rollUsages: [],
-          price: serviceDef(kind).defaultPrice,
-          done: false,
-        },
-      ]
-    })
+    const has = services.some((s) => s.kind === kind)
+    if (has) {
+      setServices((prev) => prev.filter((s) => s.kind !== kind))
+      return
+    }
+    const entry = newEntry(kind)
+    setServices((prev) => [...prev, entry])
+    setActiveSvc(entry.id)
+  }
+
+  /** încă o lucrare „Custom” pe aceeași programare */
+  const addCustom = () => {
+    const entry = newEntry('custom')
+    setServices((prev) => [...prev, entry])
+    setActiveSvc(entry.id)
   }
 
   const patchService = (id: string, patch: Partial<ServiceEntry>) =>
     setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)))
 
   const canSave = clientId && carId && services.length > 0 && startAt
+  /** ce lipsește ca pasul să fie complet — null = pas complet */
+  const stepMissing = [
+    clientId ? null : 'Alege un client',
+    carId ? null : 'Alege o mașină',
+    services.length ? null : 'Selectează minim un serviciu',
+    startAt ? null : 'Alege data primirii',
+  ]
+  /** un pas e accesibil doar dacă toți cei dinainte sunt compleți */
+  const reachable = (i: number) => stepMissing.slice(0, i).every((m) => !m)
+  const isLast = step === STEPS.length - 1
 
   const save = () => {
     if (!canSave) return
@@ -121,11 +146,12 @@ export default function JobNewPage() {
       status: 'programat',
       startAt: new Date(startAt).toISOString(),
       durationMin,
-      workStartAt: new Date(workStartAt).toISOString(),
-      workEndAt: workEnd.toISOString(),
+      workStartAt: workStartAt ? new Date(workStartAt).toISOString() : null,
+      workEndAt: workEnd ? workEnd.toISOString() : null,
       estimateMin,
       estimateManual: estimateTouched,
-      deliveryAt: deliveryAt ? new Date(deliveryAt).toISOString() : workEnd.toISOString(),
+      // ridicarea se stabilește din fișă; dacă execuția e deja planificată, se propune finalul ei
+      deliveryAt: preset.delivery || (workEnd?.toISOString() ?? null),
       assignee,
       notes,
       services,
@@ -140,14 +166,7 @@ export default function JobNewPage() {
       <PageHeader
         title="Programare nouă"
         crumbs={[{ label: 'Programări', to: '/programari' }, { label: 'Nouă' }]}
-        action={
-          <>
-            <Button onClick={() => nav('/programari')}>Anulează</Button>
-            <Button variant="primary" disabled={!canSave} onClick={save}>
-              Salvează programarea
-            </Button>
-          </>
-        }
+        action={<Button onClick={() => nav('/programari')}>Anulează</Button>}
       />
 
       <div className="mb-5 flex flex-wrap gap-2">
@@ -155,8 +174,9 @@ export default function JobNewPage() {
           <button
             key={s}
             onClick={() => setStep(i)}
+            disabled={!reachable(i)}
             className={cx(
-              'flex items-center gap-2 rounded-lg border px-3.5 py-2 text-[13px] font-semibold transition',
+              'flex items-center gap-2 rounded-lg border px-3.5 py-2 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40',
               i === step
                 ? 'border-brand-500/50 bg-brand-500/12 text-brand-400'
                 : 'border-line bg-ink-850 text-fg-mute hover:text-fg',
@@ -165,10 +185,14 @@ export default function JobNewPage() {
             <span
               className={cx(
                 'flex h-5 w-5 items-center justify-center rounded-md font-mono text-[11px]',
-                i === step ? 'bg-brand-500 text-white' : 'bg-black/[0.07]',
+                i === step
+                  ? 'bg-brand-500 text-white'
+                  : !stepMissing[i] && i < step
+                    ? 'bg-mint text-white'
+                    : 'bg-black/[0.07]',
               )}
             >
-              {i + 1}
+              {!stepMissing[i] && i < step ? '✓' : i + 1}
             </span>
             {s}
           </button>
@@ -189,7 +213,7 @@ export default function JobNewPage() {
                     }}
                   >
                     <option value="">— alege client —</option>
-                    {clients.map((c) => (
+                    {activeClients(clients).map((c) => (
                       <option key={c.id} value={c.id}>
                         {clientName(c)} · {c.phone}
                       </option>
@@ -197,15 +221,10 @@ export default function JobNewPage() {
                   </Select>
                 </Field>
               </div>
-              <div className="mt-4 flex items-center gap-3">
+              <div className="mt-4">
                 <Button onClick={() => setClientModal(true)}>
                   <IconPlus width={15} height={15} /> Client nou
                 </Button>
-                {clientId && (
-                  <Button variant="ghost" onClick={() => setStep(1)}>
-                    Continuă →
-                  </Button>
-                )}
               </div>
               {clientId && (
                 <div className="mt-5 rounded-lg border border-line bg-ink-750/60 p-4 text-[13px]">
@@ -268,15 +287,10 @@ export default function JobNewPage() {
                       <p className="text-sm text-fg-mute">Clientul nu are mașini înregistrate.</p>
                     )}
                   </div>
-                  <div className="mt-4 flex gap-3">
+                  <div className="mt-4">
                     <Button onClick={() => setCarModal(true)}>
                       <IconPlus width={15} height={15} /> Mașină nouă
                     </Button>
-                    {carId && (
-                      <Button variant="ghost" onClick={() => setStep(2)}>
-                        Continuă →
-                      </Button>
-                    )}
                   </div>
                 </>
               )}
@@ -287,7 +301,7 @@ export default function JobNewPage() {
             <>
               <Card title="3 · Servicii prestate">
                 <div className="flex flex-wrap gap-2">
-                  {SERVICE_CATALOG.map((s) => {
+                  {activeServices(settings).map((s) => {
                     const on = services.some((x) => x.kind === s.kind)
                     return (
                       <button
@@ -322,19 +336,19 @@ export default function JobNewPage() {
 
               {services.map((svc) => {
                 const def = serviceDef(svc.kind)
-                const open = activeSvc === svc.kind
+                const open = activeSvc === svc.id
                 return (
                   <Card
                     key={svc.id}
                     title={
                       <span className="flex items-center gap-2">
                         <span className="h-2 w-2 rounded-full" style={{ background: def.accent }} />
-                        Fișă {def.label}
+                        Fișă {serviceLabel(svc)}
                       </span>
                     }
                     action={
                       <button
-                        onClick={() => setActiveSvc(open ? null : svc.kind)}
+                        onClick={() => setActiveSvc(open ? null : svc.id)}
                         className="text-[13px] font-semibold text-brand-400"
                       >
                         {open ? 'restrânge' : 'completează'}
@@ -346,6 +360,8 @@ export default function JobNewPage() {
                         entry={svc}
                         stock={stock}
                         bodyType={cars.find((c) => c.id === carId)?.bodyType}
+                        carClass={effectiveCarClass(cars.find((c) => c.id === carId))}
+                        mode="booking"
                         onChange={(patch) => patchService(svc.id, patch)}
                       />
                     ) : (
@@ -358,6 +374,12 @@ export default function JobNewPage() {
                   </Card>
                 )
               })}
+
+              {services.some((s) => s.kind === 'custom') && (
+                <Button onClick={addCustom} className="self-start">
+                  <IconPlus width={15} height={15} /> Încă o lucrare custom
+                </Button>
+              )}
             </>
           )}
 
@@ -365,7 +387,7 @@ export default function JobNewPage() {
             <>
               <Card title="4 · Primirea mașinii">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field label="Când vine clientul cu mașina" required>
+                  <Field label="Clientul aduce mașina" required hint="Intrarea mașinii în atelier.">
                     <Input
                       type="datetime-local"
                       value={startAt}
@@ -393,18 +415,15 @@ export default function JobNewPage() {
                       ))}
                     </Select>
                   </Field>
-                  <Field label="Predare mașină către client (estimat)">
-                    <Input
-                      type="datetime-local"
-                      value={deliveryAt}
-                      onChange={(e) => setDeliveryAt(e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Mențiuni" className="sm:col-span-2">
+                  <Field
+                    label="Mențiuni"
+                    className="sm:col-span-2"
+                    hint="Defectele mașinii se notează la primire, când ajunge în atelier."
+                  >
                     <Textarea
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Defecte constatate, cerințe speciale, discuții cu clientul…"
+                      placeholder="Cerințe speciale, ce s-a discutat cu clientul, preferințe de ridicare…"
                     />
                   </Field>
                 </div>
@@ -413,14 +432,21 @@ export default function JobNewPage() {
               <Card title="5 · Execuția lucrării">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field
-                    label="Start execuție"
-                    hint="Poate fi în aceeași zi cu primirea sau mai târziu."
+                    label="Start execuție (opțional)"
+                    hint="Se poate lăsa gol și stabili după ce vine clientul cu mașina."
                   >
-                    <Input
-                      type="datetime-local"
-                      value={workStartAt}
-                      onChange={(e) => setWorkStartAt(e.target.value)}
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        type="datetime-local"
+                        value={workStartAt}
+                        onChange={(e) => setWorkStartAt(e.target.value)}
+                      />
+                      {workStartAt && (
+                        <Button variant="ghost" className="flex-none" onClick={() => setWorkStartAt('')}>
+                          golește
+                        </Button>
+                      )}
+                    </div>
                   </Field>
                   <Field
                     label="Timp de lucru estimat (min)"
@@ -491,10 +517,14 @@ export default function JobNewPage() {
                   <div className="mono-label mb-2">Fereastră execuție</div>
                   <p className="text-[13px]">
                     <span className="font-mono">{startAt.replace('T', ' · ')}</span> primire →{' '}
-                    <span className="font-mono text-brand-500">
-                      {workStartAt.replace('T', ' · ')} → {fmtDateTime(workEnd.toISOString())}
-                    </span>{' '}
-                    ({(estimateMin / 60).toFixed(1)} h)
+                    {workEnd ? (
+                      <span className="font-mono text-brand-500">
+                        {workStartAt.replace('T', ' · ')} → {fmtDateTime(workEnd.toISOString())}
+                      </span>
+                    ) : (
+                      <span className="text-fg-mute">execuția se planifică după primire</span>
+                    )}{' '}
+                    ({(estimateMin / 60).toFixed(1)} h estimat)
                   </p>
                   {services.length > 0 && (
                     <ul className="mt-3 flex flex-col gap-1">
@@ -503,7 +533,7 @@ export default function JobNewPage() {
                           key={s.id}
                           className="flex justify-between font-mono text-[11.5px] text-fg-mute"
                         >
-                          <span>{serviceDef(s.kind).label}</span>
+                          <span>{serviceLabel(s)}</span>
                           <span>{(serviceDef(s.kind).estimateMin / 60).toFixed(1)} h</span>
                         </li>
                       ))}
@@ -513,6 +543,41 @@ export default function JobNewPage() {
               </Card>
             </>
           )}
+
+          {/* navigare wizard: Înapoi stânga, acțiunea principală dreapta */}
+          <StickyBar>
+            <div className="flex w-full items-center gap-3 md:rounded-xl md:border md:border-line md:bg-ink-850 md:px-4 md:py-3 md:shadow-[0_6px_24px_rgba(0,0,0,0.10)]">
+              <Button
+                onClick={() => setStep(step - 1)}
+                className={cx(step === 0 && 'invisible')}
+              >
+                ← Înapoi
+              </Button>
+              <span className="ml-auto hidden text-right text-[12px] text-fg-faint sm:block">
+                {stepMissing[step] ??
+                  (isLast ? 'Totul e completat' : `Pasul ${step + 1} din ${STEPS.length}`)}
+              </span>
+              {isLast ? (
+                <Button
+                  variant="primary"
+                  className="ml-auto flex-1 sm:ml-0 sm:flex-none"
+                  disabled={!canSave}
+                  onClick={save}
+                >
+                  Salvează programarea
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  className="ml-auto flex-1 sm:ml-0 sm:flex-none"
+                  disabled={Boolean(stepMissing[step])}
+                  onClick={() => setStep(step + 1)}
+                >
+                  Continuă: {STEPS[step + 1]} →
+                </Button>
+              )}
+            </div>
+          </StickyBar>
         </div>
 
         {/* rezumat */}
@@ -544,7 +609,7 @@ export default function JobNewPage() {
             <ul className="flex flex-col gap-2">
               {services.map((s) => (
                 <li key={s.id} className="flex justify-between gap-3 text-[13px]">
-                  <span>{serviceDef(s.kind).label}</span>
+                  <span>{serviceLabel(s)}</span>
                   <Money value={s.price} className="font-mono" />
                 </li>
               ))}
@@ -553,15 +618,6 @@ export default function JobNewPage() {
 
           <div className="my-4 h-px bg-line" />
           <TotalBreakdown value={total} />
-
-          <Button variant="primary" className="mt-5 w-full" disabled={!canSave} onClick={save}>
-            Salvează programarea
-          </Button>
-          {!canSave && (
-            <p className="mt-2 text-center text-[11.5px] text-fg-faint">
-              Necesar: client, mașină, minim un serviciu.
-            </p>
-          )}
         </Card>
       </div>
 

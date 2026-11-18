@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="paint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7d8288"/>
+      <stop offset=".5" stop-color="#4b4f55"/>
+      <stop offset="1" stop-color="#26292d"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="#1b1c1f"/>
+  <!-- capotă în perspectivă -->
+  <path d="M120 600 L230 90 Q400 60 570 90 L680 600 Z" fill="url(#paint)"/>
+  <path d="M300 110 Q400 300 340 600" stroke="#000" stroke-opacity=".25" stroke-width="3" fill="none"/>
+  <path d="M500 110 Q400 300 460 600" stroke="#000" stroke-opacity=".25" stroke-width="3" fill="none"/>
+  <path d="M200 520 L560 120" stroke="url(#shine)" stroke-width="70"/>
+  <!-- ciupituri de pietre -->
+  <g fill="#e9ecef">
+    <circle cx="388" cy="230" r="3.5"/><circle cx="410" cy="246" r="2.5"/><circle cx="372" cy="262" r="3"/>
+    <circle cx="430" cy="214" r="2"/><circle cx="398" cy="285" r="3.5"/><circle cx="352" cy="232" r="2"/>
+    <circle cx="445" cy="270" r="2.5"/><circle cx="420" cy="300" r="2"/><circle cx="380" cy="310" r="2.5"/>
+    <circle cx="460" cy="240" r="1.8"/><circle cx="340" cy="290" r="1.8"/>
+  </g>
+  <g fill="#3a2a22"><circle cx="388" cy="230" r="1.5"/><circle cx="398" cy="285" r="1.5"/><circle cx="372" cy="262" r="1.2"/></g>
+  <circle cx="400" cy="262" r="96" fill="none" stroke="#e02a2a" stroke-width="7" stroke-dasharray="18 10"/>
+  <circle cx="500" cy="170" r="20" fill="#e02a2a"/>
+  <text x="500" y="178" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#fff">2</text>
+</svg>

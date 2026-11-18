@@ -6,14 +6,14 @@ import { Stepper } from '@/components/ui/Stepper'
 import { Button } from '@/components/ui'
 import { StatusBadge } from '@/components/StatusBadge'
 import { IconPhone, IconPlay, IconStop } from '@/components/Icons'
-import { useStore } from '@/data/store'
+import { jobReceivedAt, useStore } from '@/data/store'
 import type { CalEvent } from './useCalendarEvents'
 
 const toTimeInput = (d: Date) => format(d, 'HH:mm')
 
 export function EventSheet({ event, onClose }: { event: CalEvent | null; onClose: () => void }) {
   const nav = useNavigate()
-  const { jobs, clients, updateJob, startExecution, finishExecution, toast } = useStore()
+  const { jobs, clients, updateJob, markReceived, startExecution, finishExecution, toast } = useStore()
 
   const [moving, setMoving] = useState(false)
   const [time, setTime] = useState('09:00')
@@ -111,7 +111,19 @@ export function EventSheet({ event, onClose }: { event: CalEvent | null; onClose
             Deschide fișa
           </Button>
 
-          {job?.status === 'programat' && (
+          {job?.status === 'programat' && !jobReceivedAt(job) && (
+            <Button
+              className="min-h-[44px] w-full"
+              onClick={() => {
+                markReceived(job.id)
+                toast('Mașină primită')
+                onClose()
+              }}
+            >
+              ✓ Mașina a fost primită
+            </Button>
+          )}
+          {job?.status === 'programat' && jobReceivedAt(job) && (
             <Button
               className="min-h-[44px] w-full"
               onClick={() => {

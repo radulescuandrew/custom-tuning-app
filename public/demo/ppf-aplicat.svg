@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f3f4f6"/>
+      <stop offset="1" stop-color="#c9ccd2"/>
+    </linearGradient>
+    <linearGradient id="paint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f4a8a"/>
+      <stop offset=".55" stop-color="#1c2f5e"/>
+      <stop offset="1" stop-color="#0d1730"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <!-- siluetă coupe -->
+  <path d="M60 400 Q70 330 170 315 L280 250 Q360 205 470 210 Q560 215 620 270 L720 300 Q770 315 770 380 L765 420 H60 Z" fill="url(#paint)"/>
+  <path d="M300 258 Q370 222 460 225 Q530 230 575 270 Z" fill="#9fb3d1" opacity=".55"/>
+  <path d="M110 330 Q420 270 740 330" stroke="url(#gloss)" stroke-width="22" fill="none"/>
+  <path d="M90 372 Q420 330 750 372" stroke="url(#gloss)" stroke-width="8" fill="none" opacity=".7"/>
+  <circle cx="200" cy="425" r="62" fill="#111"/><circle cx="200" cy="425" r="36" fill="#9a9ea5"/>
+  <circle cx="620" cy="425" r="62" fill="#111"/><circle cx="620" cy="425" r="36" fill="#9a9ea5"/>
+  <ellipse cx="410" cy="490" rx="360" ry="16" fill="#000" opacity=".12"/>
+  <!-- bifă finalizat -->
+  <circle cx="700" cy="110" r="44" fill="#16a06a"/>
+  <path d="M680 110 L695 126 L722 94" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

@@ -13,7 +13,11 @@ export const savePhoto = async (id: string, file: File | Blob) => {
 
 const cache = new Map<string, string>()
 
+/** Pozele din datele demo sunt fișiere statice din public/demo („demo:demo/x.svg”). */
+const DEMO = 'demo:'
+
 export const photoUrl = async (key: string) => {
+  if (key.startsWith(DEMO)) return `${import.meta.env.BASE_URL}${key.slice(DEMO.length)}`
   const hit = cache.get(key)
   if (hit) return hit
   const blob = await get<Blob>(key)
@@ -24,6 +28,7 @@ export const photoUrl = async (key: string) => {
 }
 
 export const dropPhoto = async (key: string) => {
+  if (key.startsWith(DEMO)) return
   const url = cache.get(key)
   if (url) {
     URL.revokeObjectURL(url)

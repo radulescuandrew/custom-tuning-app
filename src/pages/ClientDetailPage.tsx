@@ -6,7 +6,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import ClientModal from '@/components/modals/ClientModal'
 import CarModal from '@/components/modals/CarModal'
 import { carName, clientName, jobTotal, useStore } from '@/data/store'
-import { serviceDef } from '@/data/serviceCatalog'
+import { serviceLabel } from '@/data/serviceCatalog'
 import { fmtDate, initials } from '@/lib/utils'
 import { IconChevronRight, IconPlus, IconTrash } from '@/components/Icons'
 import { useMoney } from '@/components/Money'
@@ -15,7 +15,7 @@ export default function ClientDetailPage() {
   const { fmt } = useMoney()
   const { id = '' } = useParams()
   const nav = useNavigate()
-  const { clients, cars, jobs, removeClient } = useStore()
+  const { clients, cars, jobs, archiveClient, restoreClient, toast } = useStore()
   const [edit, setEdit] = useState(false)
   const [carModal, setCarModal] = useState(false)
 
@@ -48,6 +48,13 @@ export default function ClientDetailPage() {
           </>
         }
       />
+
+      {client.archivedAt && (
+        <div className="mb-5 rounded-lg border border-line bg-black/[0.04] px-4 py-3 text-[13px] text-fg-mute">
+          Client șters pe <strong className="text-fg">{fmtDate(client.archivedAt)}</strong>. Nu mai apare
+          în liste și căutare; istoricul de mai jos rămâne pentru evidență.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[330px_1fr]">
         <div className="flex flex-col gap-5">
@@ -88,17 +95,33 @@ export default function ClientDetailPage() {
             )}
           </Card>
 
-          <Button
-            variant="danger"
-            onClick={() => {
-              if (confirm('Ștergi clientul, mașinile și programările lui?')) {
-                removeClient(client.id)
-                nav('/clienti')
-              }
-            }}
-          >
-            <IconTrash width={15} height={15} /> Șterge client
-          </Button>
+          {client.archivedAt ? (
+            <Button
+              onClick={() => {
+                restoreClient(client.id)
+                toast('Client restaurat')
+              }}
+            >
+              Restaurează clientul
+            </Button>
+          ) : (
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (
+                  confirm(
+                    'Ștergi clientul? Dispare din liste și căutare, dar mașinile, programările și documentele lui rămân în istoric.',
+                  )
+                ) {
+                  archiveClient(client.id)
+                  toast('Client șters — istoricul a fost păstrat', 'info')
+                  nav('/clienti')
+                }
+              }}
+            >
+              <IconTrash width={15} height={15} /> Șterge client
+            </Button>
+          )}
         </div>
 
         <div className="flex flex-col gap-5">
@@ -151,7 +174,7 @@ export default function ClientDetailPage() {
                     >
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-semibold">
-                          {j.services.map((s) => serviceDef(s.kind).label).join(' + ')}
+                          {j.services.map((s) => serviceLabel(s)).join(' + ')}
                         </div>
                         <div className="font-mono text-[11.5px] text-fg-faint">
                           {j.code} · {fmtDate(j.startAt)} · {carName(cars.find((c) => c.id === j.carId))}

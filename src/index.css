@@ -229,3 +229,16 @@
     display: none !important;
   }
 }
+
+/* Documente (contract / procese-verbale): foaie A4, fără umbră și padding de ecran la print. */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 16mm;
+  }
+  .doc-paper {
+    max-width: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+}

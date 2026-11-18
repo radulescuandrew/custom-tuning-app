@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Button, Field, Input, Modal, Select, Textarea } from '../ui'
 import { clientName, useStore } from '@/data/store'
-import { CAR_TYPES } from '@/data/serviceCatalog'
-import type { Car, CarBodyType } from '@/data/types'
+import { CAR_CLASSES, CAR_TYPES, carClassLabel, suggestCarClass } from '@/data/serviceCatalog'
+import type { Car, CarBodyType, CarClass } from '@/data/types'
 
 const empty = {
   clientId: '',
   make: '',
   model: '',
   bodyType: '' as CarBodyType | '',
+  carClass: '' as CarClass | '',
   year: '' as string,
   engine: '',
   plate: '',
@@ -81,7 +82,7 @@ export default function CarModal({
         <Field label="Proprietar" required className="sm:col-span-2">
           <Select value={f.clientId} onChange={(e) => set('clientId', e.target.value)}>
             <option value="">— alege client —</option>
-            {clients.map((c) => (
+            {clients.filter((c) => !c.archivedAt || c.id === f.clientId).map((c) => (
               <option key={c.id} value={c.id}>
                 {clientName(c)}
               </option>
@@ -103,6 +104,19 @@ export default function CarModal({
             {CAR_TYPES.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Clasă (grilă prețuri)" hint="Prețurile la detailing, polish și ceramică.">
+          <Select
+            value={f.carClass}
+            onChange={(e) => setF((p) => ({ ...p, carClass: e.target.value as CarClass | '' }))}
+          >
+            <option value="">auto · {carClassLabel(suggestCarClass(f.bodyType))}</option>
+            {CAR_CLASSES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
               </option>
             ))}
           </Select>

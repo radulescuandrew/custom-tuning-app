@@ -5,7 +5,7 @@ import { Badge, Button, Card, EmptyState } from '@/components/ui'
 import { StatusBadge } from '@/components/StatusBadge'
 import CarModal from '@/components/modals/CarModal'
 import { carName, clientName, jobTotal, useStore } from '@/data/store'
-import { serviceDef } from '@/data/serviceCatalog'
+import { serviceLabel, carClassLabel, effectiveCarClass } from '@/data/serviceCatalog'
 import { fmtDate } from '@/lib/utils'
 import { IconPlus, IconTrash } from '@/components/Icons'
 import { useMoney } from '@/components/Money'
@@ -89,7 +89,7 @@ export default function CarDetailPage() {
                     >
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-semibold">
-                          {j.services.map((s) => serviceDef(s.kind).label).join(' + ')}
+                          {j.services.map((s) => serviceLabel(s)).join(' + ')}
                         </div>
                         <div className="font-mono text-[11.5px] text-fg-faint">
                           {j.code} · {fmtDate(j.startAt)} · {j.assignee}
@@ -134,6 +134,7 @@ export default function CarDetailPage() {
                 ['Marcă', car.make],
                 ['Model', car.model],
                 ['An fabricație', car.year ? String(car.year) : '—'],
+                ['Clasă prețuri', carClassLabel(effectiveCarClass(car))],
                 ['Motorizare', car.engine],
                 ['Culoare', car.color],
                 ['Nr. înmatriculare', car.plate],

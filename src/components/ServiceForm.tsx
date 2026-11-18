@@ -1,11 +1,19 @@
 import { useMemo, useState } from 'react'
-import type { CarBodyType, ElementEntry, ServiceEntry, StockItem } from '@/data/types'
-import { BODY_ELEMENTS, estimateFoilMeters, serviceDef, type FieldDef } from '@/data/serviceCatalog'
+import type { CarBodyType, CarClass, ElementEntry, ServiceEntry, StockItem } from '@/data/types'
+import {
+  BODY_ELEMENTS,
+  carClassLabel,
+  estimateFoilMeters,
+  gridPrice,
+  serviceDef,
+  type FieldDef,
+} from '@/data/serviceCatalog'
 import { Badge, Button, Field, Input, Select, Textarea } from './ui'
 import { SegmentedControl } from './ui/SegmentedControl'
 import { IconPlus, IconTrash } from './Icons'
 import { cx, uid } from '@/lib/utils'
 import { useSettings } from '@/data/store'
+import { ceramicUses } from '@/data/ceramics'
 import { amounts, fmtRon, priceFieldLabel } from '@/lib/money'
 import type { Settings } from '@/data/types'
 
@@ -24,15 +32,34 @@ interface Props {
   onChange: (patch: Partial<ServiceEntry>) => void
   /** tipul caroseriei mașinii din programare — pentru estimarea consumului de folie */
   bodyType?: CarBodyType | ''
+  /** clasa mașinii — alege coloana din grila de prețuri (detailing, ceramică) */
+  carClass?: CarClass
+  /**
+   * booking = la crearea programării: fără rolă, metri și „Executat de” (nu se știu încă;
+   * se completează în lucru / la finalizare). work = fișa din programare.
+   */
+  mode?: 'booking' | 'work'
 }
 
-export default function ServiceForm({ entry, stock, onChange, bodyType }: Props) {
+export default function ServiceForm({
+  entry,
+  stock,
+  onChange,
+  bodyType,
+  carClass = 'medie',
+  mode = 'work',
+}: Props) {
   const def = serviceDef(entry.kind)
   const settings = useSettings()
   const [extra, setExtra] = useState('')
 
-  const setValue = (key: string, v: string) =>
-    onChange({ values: { ...entry.values, [key]: v } })
+  /** la detailing / ceramică prețul urmează grila, cât timp nu a fost scris de mână */
+  const setValue = (key: string, v: string) => {
+    const values = { ...entry.values, [key]: v }
+    const grid = gridPrice(entry.kind, values, carClass, settings)
+    onChange(grid !== null && !entry.priceManual ? { values, price: grid } : { values })
+  }
+  const grid = gridPrice(entry.kind, entry.values, carClass, settings)
 
   const elements: ElementEntry[] = useMemo(
     () =>
@@ -46,8 +73,14 @@ export default function ServiceForm({ entry, stock, onChange, bodyType }: Props)
     onChange({ elements: elements.map((e) => (e.id === id ? { ...e, ...patch } : e)) })
 
   const rollFields = def.groups.flatMap((g) => g.fields).filter((f) => f.type === 'roll')
-  const selectedRolls = rollFields
-    .map((f) => ({ field: f, item: stock.find((s) => s.id === entry.values[f.key]) }))
+  /** rolele din care se consumă: cea aleasă în fișă + orice altă rolă cu consum (ex. 15 m din R-04 + 5 m din R-05) */
+  const selectedRolls = [
+    ...new Set([
+      ...rollFields.map((f) => entry.values[f.key]).filter(Boolean),
+      ...entry.rollUsages.map((u) => u.stockItemId),
+    ]),
+  ]
+    .map((rid) => ({ item: stock.find((s) => s.id === rid) }))
     .filter((r) => r.item)
 
   const usageFor = (stockItemId: string) =>
@@ -62,8 +95,13 @@ export default function ServiceForm({ entry, stock, onChange, bodyType }: Props)
     })
   }
 
+  /** câmpuri care se știu abia în timpul lucrului */
+  const workOnly = (f: FieldDef) => f.type === 'roll' || f.key === 'metersUsed' || f.key === 'crew'
   const visible = (f: FieldDef) =>
-    !f.showIf || f.showIf.equals.includes(entry.values[f.showIf.key] ?? '')
+    (!f.showIf || f.showIf.equals.includes(entry.values[f.showIf.key] ?? '')) &&
+    !(mode === 'booking' && workOnly(f))
+  /** metrii folosiți = totalul consumului pe role (o singură sursă, nu un câmp separat) */
+  const metersFromRolls = Math.round(entry.rollUsages.reduce((sum, u) => sum + (u.qty || 0), 0) * 100) / 100
 
   /** Golește câmpurile grupurilor ascunse, altfel rămâne consum fantomă din rola cealaltă. */
   const switchVariant = (variantKey: string, value: string) => {
@@ -83,8 +121,20 @@ export default function ServiceForm({ entry, stock, onChange, bodyType }: Props)
 
   const renderField = (f: FieldDef) => {
     const value = entry.values[f.key] ?? ''
+    if (f.key === 'metersUsed') {
+      const total = metersFromRolls || Number(value) || 0
+      return (
+        <Field key={f.key} label={f.label} hint="Totalul din consumul pe role — se confirmă la finalizare.">
+          <div className="rounded-lg border border-line bg-ink-750/50 px-3 py-2.5 font-mono text-[14px] text-fg-dim">
+            {total ? `${total} m` : '—'}
+          </div>
+        </Field>
+      )
+    }
     if (f.type === 'roll') {
-      const opts = stock.filter((s) => s.category === f.stockCategory)
+      const opts = stock.filter(
+        (s) => s.category === f.stockCategory && (s.qty > 0 || s.id === value),
+      )
       const selected = stock.find((s) => s.id === value)
       /** Producătorul și finisajul vin din rolă — nu se mai completează de mână.
        *  La alegere se propune consumul estimat după caroserie; se corectează la final. */
@@ -180,6 +230,7 @@ export default function ServiceForm({ entry, stock, onChange, bodyType }: Props)
             </div>
           )
         }
+        if (!g.fields.some(visible)) return null
         return (
           <div key={g.title}>
             <div className="mono-label mb-3 flex items-center gap-2">
@@ -191,7 +242,34 @@ export default function ServiceForm({ entry, stock, onChange, bodyType }: Props)
         )
       })}
 
-      {selectedRolls.length > 0 && (
+      {mode === 'work' && entry.kind === 'ceramica' && ceramicUses(entry, stock).length > 0 && (
+        <div>
+          <div className="mono-label mb-3">Consum din stoc · la finalizare</div>
+          <div className="overflow-hidden rounded-lg border border-line">
+            {ceramicUses(entry, stock).map((u) => {
+              const applied = u.item && entry.rollUsages.some((x) => x.stockItemId === u.item!.id && x.appliedAt)
+              return (
+                <div
+                  key={u.product}
+                  className="flex items-center gap-3 border-b border-line px-4 py-2.5 text-[13px] last:border-0"
+                >
+                  <span className="min-w-0 flex-1 font-semibold">{u.product}</span>
+                  {u.item ? (
+                    <span className="font-mono text-[11.5px] text-fg-mute">
+                      lot #{u.item.rollNumber} · {u.item.qty} buc în stoc
+                    </span>
+                  ) : (
+                    <Badge tone="ember">nu e în stoc</Badge>
+                  )}
+                  {applied ? <Badge tone="mint">scăzut</Badge> : u.item && <Badge tone="neutral">−1 buc</Badge>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {mode === 'work' && entry.kind !== 'ceramica' && selectedRolls.length > 0 && (
         <div>
           <div className="mono-label mb-3">Consum din stoc</div>
           <div className="overflow-hidden rounded-lg border border-line">
@@ -332,9 +410,28 @@ export default function ServiceForm({ entry, stock, onChange, bodyType }: Props)
           <Input
             type="number"
             value={entry.price || ''}
-            onChange={(e) => onChange({ price: Number(e.target.value) })}
+            placeholder={entry.kind === 'custom' ? 'preț stabilit cu clientul' : undefined}
+            onChange={(e) => onChange({ price: Number(e.target.value), priceManual: true })}
           />
         </Field>
+        {grid !== null && (
+          <div className="flex flex-col justify-center gap-1 rounded-lg border border-line bg-ink-750/60 px-3 py-2 text-[12.5px]">
+            <span className="text-fg-mute">
+              Grilă clasă <strong className="text-fg">{carClassLabel(carClass)}</strong>:{' '}
+              <strong className="font-mono text-fg">{fmtRon(grid)}</strong>
+            </span>
+            {grid !== entry.price ? (
+              <button
+                onClick={() => onChange({ price: grid, priceManual: false })}
+                className="self-start text-[12.5px] font-semibold text-brand-500 hover:underline"
+              >
+                aplică prețul din grilă
+              </button>
+            ) : (
+              <span className="text-[11.5px] text-fg-faint">prețul urmează grila</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

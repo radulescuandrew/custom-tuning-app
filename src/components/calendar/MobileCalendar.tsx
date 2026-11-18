@@ -46,7 +46,8 @@ const periodLabel = (view: View, anchor: Date) => {
 export default function MobileCalendar({ jobs }: { jobs: Job[] }) {
   const { clients, cars, updateJob, toast } = useStore()
 
-  const [view, setView] = useState<View>('luna')
+  /** lista (agenda) e vizualizarea implicită, ca pe desktop */
+  const [view, setView] = useState<View>('agenda')
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()))
   const [filters, setFilters] = useState<MobileFilters>(DEFAULT_FILTERS)
   const [filtersOpen, setFiltersOpen] = useState(false)

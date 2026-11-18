@@ -4,7 +4,7 @@ import { cx, initials } from '@/lib/utils'
 import { ROLE_LABEL, canSeeTimeOff, useCurrentUser, useStore } from '@/data/store'
 import { useIsDesktop } from '@/hooks/useMediaQuery'
 import { MobileHeader } from './mobile/MobileHeader'
-import { SearchOverlay, useGlobalSearch } from './mobile/SearchOverlay'
+import { SearchOverlay } from './mobile/SearchOverlay'
 import { BottomTabBar } from './mobile/BottomTabBar'
 import { MoreSheet } from './mobile/MoreSheet'
 import { Fab } from './mobile/Fab'
@@ -15,13 +15,11 @@ import {
   IconCar,
   IconChart,
   IconDashboard,
-  IconPlus,
   IconRefresh,
-  IconSearch,
   IconSettings,
   IconUsers,
 } from './Icons'
-import { Avatar, Button } from './ui'
+import { Avatar } from './ui'
 import { Logo } from './Logo'
 
 const NAV = [
@@ -35,45 +33,6 @@ const NAV = [
   { to: '/rapoarte', label: 'Rapoarte', Icon: IconChart },
   { to: '/setari', label: 'Setări', Icon: IconSettings, managerOnly: true },
 ]
-
-function GlobalSearch() {
-  const [q, setQ] = useState('')
-  const nav = useNavigate()
-  const results = useGlobalSearch(q).slice(0, 8)
-
-  return (
-    <div className="relative w-full max-w-md">
-      <IconSearch
-        width={16}
-        height={16}
-        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-fg-faint"
-      />
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Caută client, mașină, nr. înmatriculare, PRG-…"
-        className="w-full rounded-lg border border-line-strong bg-ink-750 py-2 pr-3 pl-9 text-sm outline-none placeholder:text-fg-faint focus:border-brand-500/60"
-      />
-      {results.length > 0 && (
-        <div className="absolute top-full z-40 mt-2 w-full overflow-hidden rounded-lg border border-line-strong bg-ink-850 shadow-2xl">
-          {results.map((r) => (
-            <button
-              key={r.to + r.label}
-              onMouseDown={() => {
-                nav(r.to)
-                setQ('')
-              }}
-              className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-black/[0.05]"
-            >
-              <span className="text-sm">{r.label}</span>
-              <span className="font-mono text-[11px] text-fg-faint">{r.sub}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 function Toasts() {
   const toasts = useStore((s) => s.toasts)
@@ -106,15 +65,22 @@ export default function AppLayout() {
   if (isDesktop) return <DesktopShell />
 
   const showFab = pathname === '/azi' || pathname === '/programari'
+  /** fluxurile pas-cu-pas rulează în mod focus: fără tab bar, au propria bară de acțiuni jos */
+  const focusMode = pathname === '/programari/nou'
 
   return (
     <div className="flex h-dvh flex-col">
       <MobileHeader onOpenSearch={() => setSearch(true)} onOpenMore={() => setMore(true)} />
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+72px)]">
+      <main
+        className={cx(
+          'min-h-0 flex-1 overflow-y-auto px-4 pt-4',
+          !focusMode && 'pb-[calc(env(safe-area-inset-bottom)+72px)]',
+        )}
+      >
         <Outlet />
       </main>
       {showFab && <Fab label="Programare nouă" onClick={() => nav('/programari/nou')} />}
-      <BottomTabBar onOpenMore={() => setMore(true)} />
+      {!focusMode && <BottomTabBar onOpenMore={() => setMore(true)} />}
       <MoreSheet open={more} onClose={() => setMore(false)} />
       <SearchOverlay open={search} onClose={() => setSearch(false)} />
       <Toasts />
@@ -123,7 +89,6 @@ export default function AppLayout() {
 }
 
 function DesktopShell() {
-  const nav = useNavigate()
   const reset = useStore((s) => s.reset)
   const staff = useStore((s) => s.staff)
   const setCurrentUser = useStore((s) => s.setCurrentUser)
@@ -205,12 +170,6 @@ function DesktopShell() {
 
       {/* main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-none items-center gap-4 border-b border-line bg-ink-900/85 px-6 py-3.5 backdrop-blur">
-          <GlobalSearch />
-          <Button variant="primary" className="ml-auto" onClick={() => nav('/programari/nou')}>
-            <IconPlus width={16} height={16} /> Programare
-          </Button>
-        </header>
         <main className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
           <Outlet />
         </main>

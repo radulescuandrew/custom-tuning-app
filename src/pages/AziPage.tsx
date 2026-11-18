@@ -7,7 +7,7 @@ import {
   carName,
   clientName,
   useCurrentUser,
-  useStore,
+  jobReceivedAt, useStore,
 } from '@/data/store'
 import { serviceDef } from '@/data/serviceCatalog'
 import { StatusBadge } from '@/components/StatusBadge'
@@ -20,7 +20,7 @@ const jobHour = (j: Job) => j.workStartAt ?? j.startAt
 
 export default function AziPage() {
   const nav = useNavigate()
-  const { jobs, cars, clients, startExecution, finishExecution } = useStore()
+  const { jobs, cars, clients, markReceived, startExecution, finishExecution } = useStore()
   const me = useCurrentUser()
   const seesAll = canSeeTimeOff(me?.role)
 
@@ -76,7 +76,16 @@ export default function AziPage() {
                 </div>
               </button>
 
-              {j.status === 'programat' && (
+              {j.status === 'programat' && !jobReceivedAt(j) && (
+                <Button
+                  variant="primary"
+                  className="mt-3 min-h-[44px] w-full"
+                  onClick={() => markReceived(j.id)}
+                >
+                  ✓ Mașina a fost primită
+                </Button>
+              )}
+              {j.status === 'programat' && jobReceivedAt(j) && (
                 <Button
                   variant="primary"
                   className="mt-3 min-h-[44px] w-full"

@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Button, Card, EmptyState, TableWrap, Td, Th } from '@/components/ui'
 import CarModal from '@/components/modals/CarModal'
 import { carName, clientName, useStore } from '@/data/store'
-import { IconChevronRight, IconPlus } from '@/components/Icons'
+import { IconChevronRight, IconPlus, IconSearch } from '@/components/Icons'
 
 export default function CarsPage() {
   const nav = useNavigate()
@@ -36,12 +36,17 @@ export default function CarsPage() {
         }
       />
 
-      <div className="mb-4 flex">
+      <div className="relative mb-4 w-full max-w-xl">
+        <IconSearch
+          width={15}
+          height={15}
+          className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-fg-faint"
+        />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Caută marcă, model, nr. înmatriculare, VIN…"
-          className="ml-auto w-80 rounded-lg border border-line-strong bg-ink-750 px-3 py-1.5 text-[13px] outline-none focus:border-brand-500/60"
+          placeholder="Caută marcă, model, nr. înmatriculare, VIN, proprietar…"
+          className="w-full rounded-lg border border-line-strong bg-ink-750 py-2 pr-3 pl-9 text-[14px] outline-none focus:border-brand-500/60"
         />
       </div>
 

@@ -1,7 +1,7 @@
 import { addDays, setHours, setMinutes, startOfDay, subDays } from 'date-fns'
 import type { DB, Job, JobStatus, ServiceEntry, ServiceKind, Settings } from './types'
 import { BODY_ELEMENTS, CAR_TYPES, estimateRounded, serviceDef } from './serviceCatalog'
-import { uid } from '@/lib/utils'
+import { addBusinessDays, fmtDateTime as fmtDT, uid } from '@/lib/utils'
 
 /** Setările implicite — folosite la seed și la migrarea datelor persistate mai vechi. */
 export const defaultSettings = (): Settings => ({
@@ -12,6 +12,8 @@ export const defaultSettings = (): Settings => ({
   vatRate: 21,
   /** prețurile din fișe sunt cele finale, afișate clientului */
   pricesIncludeVat: true,
+  /** implicit se cere confirmare — se vede modalul de anunțare la finalizare */
+  pickupNotifyAuto: false,
   /** gol = se folosesc duratele din catalogul de servicii */
   serviceDurationMin: {},
   carTypeFactor: Object.fromEntries(
@@ -22,6 +24,16 @@ export const defaultSettings = (): Settings => ({
 const iso = (d: Date) => d.toISOString()
 const at = (dayOffset: number, hour: number, min = 0) =>
   iso(setMinutes(setHours(startOfDay(addDays(new Date(), dayOffset)), hour), min))
+
+/** Poză demo din public/demo — vezi lib/photos.ts. */
+const demoPhoto = (file: string, caption: string, dayOffset: number, isPublic = true) => ({
+  id: uid(),
+  key: `demo:demo/${file}`,
+  name: file,
+  caption,
+  createdAt: at(dayOffset, 9, 30),
+  public: isPublic,
+})
 
 const els = (names: string[], code = '') =>
   BODY_ELEMENTS.map((name) => ({
@@ -70,9 +82,11 @@ const A = {
 }
 const S = {
   ppfGloss: 'st-ppf-gloss',
+  ppfGloss2: 'st-ppf-gloss-2',
   ppfMatte: 'st-ppf-matte',
   ppf182: 'st-ppf-182',
   satinGrey: 'st-satin-grey',
+  satinGrey2: 'st-satin-grey-2',
   glossBlack: 'st-gloss-black',
   tint20: 'st-tint-20',
   krytex9h: 'st-krytex-9h',
@@ -123,6 +137,11 @@ export const buildSeed = (): DB => {
     assignee: 'Andrei Pavel',
     actualStartAt: at(0, 9, 20),
     notes: 'Client cere atenție specială la pragurile deja zgâriate.',
+    photos: [
+      demoPhoto('bara-fata-zgarieturi.svg', 'Zgârieturi bară față, colț dreapta', 0),
+      demoPhoto('capota-ciupituri.svg', 'Ciupituri de pietre pe capotă', 0),
+      demoPhoto('prag-zgariat.svg', 'Prag stânga zgâriat (preexistent)', 0),
+    ],
     services: [
       svc(
         'colantare',
@@ -138,7 +157,10 @@ export const buildSeed = (): DB => {
         },
         {
           elements: ['Bară față', 'Capotă', 'Aripi față', 'Praguri', 'Oglinzi', 'Bară spate'],
-          rolls: [{ stockItemId: S.ppfGloss, qty: 20 }],
+          rolls: [
+            { stockItemId: S.ppfGloss, qty: 15 },
+            { stockItemId: S.ppfGloss2, qty: 5 },
+          ],
           price: 8900,
         },
       ),
@@ -164,9 +186,13 @@ export const buildSeed = (): DB => {
     startAt: at(2, 10),
     workStartAt: at(5, 9),
     deliveryAt: at(6, 16),
-    status: 'asteapta_piese',
+    status: 'blocat',
+    blockedReason: 'Așteaptă piese — difuzorul carbon ABT vine pe 12',
     assignee: 'Andrei Pavel',
     notes: 'Difuzorul carbon vine pe 12, restul e în stoc.',
+    photos: [
+      demoPhoto('difuzor-demontat.svg', 'Locaș difuzor — piesa veche demontată', -1, false),
+    ],
     services: [
       svc(
         'tuning',
@@ -198,7 +224,10 @@ export const buildSeed = (): DB => {
         },
         {
           elements: BODY_ELEMENTS.slice(0, 9),
-          rolls: [{ stockItemId: S.satinGrey, qty: 17 }],
+          rolls: [
+            { stockItemId: S.satinGrey, qty: 15 },
+            { stockItemId: S.satinGrey2, qty: 2 },
+          ],
           price: 10500,
         },
       ),
@@ -295,9 +324,14 @@ export const buildSeed = (): DB => {
     carId: A.golf,
     startAt: at(-9, 9),
     deliveryAt: at(-6, 17),
+    photos: [
+      demoPhoto('janta-lovita.svg', 'Jantă față dreapta bordurată (preexistent)', -9),
+      demoPhoto('ppf-aplicat.svg', 'PPF aplicat — gata de predare', -6),
+    ],
     status: 'predat',
     assignee: 'Andrei Pavel',
     completedAt: at(-6, 16),
+    handedOverAt: at(-6, 17),
     actualStartAt: at(-9, 9, 30),
     actualEndAt: at(-6, 15),
     services: [
@@ -326,6 +360,7 @@ export const buildSeed = (): DB => {
     status: 'predat',
     assignee: 'Cosmin Dinu',
     completedAt: at(-17, 15),
+    handedOverAt: at(-17, 17),
     actualStartAt: at(-20, 10),
     actualEndAt: at(-17, 14),
     services: [
@@ -425,6 +460,7 @@ export const buildSeed = (): DB => {
     {
       id: A.m4,
       bodyType: 'coupe_sport',
+      carClass: 'mare',
       clientId: C.vlad,
       make: 'BMW',
       model: 'M4 Competition',
@@ -470,6 +506,7 @@ export const buildSeed = (): DB => {
     {
       id: A.rs6,
       bodyType: 'break',
+      carClass: 'supercar',
       clientId: C.tribus,
       make: 'Audi',
       model: 'RS6 Avant',
@@ -515,6 +552,7 @@ export const buildSeed = (): DB => {
     {
       id: A.supra,
       bodyType: 'coupe_sport',
+      carClass: 'mare',
       clientId: C.rares,
       make: 'Toyota',
       model: 'GR Supra',
@@ -644,39 +682,43 @@ export const buildSeed = (): DB => {
     },
   ]
 
+  /** reminderul de retuș pentru done1: 7 zile lucrătoare de la predare + 3 zile, la 10:00 */
+  const done1Reminder = iso(
+    setHours(startOfDay(addDays(addBusinessDays(new Date(at(-6, 17)), 7), 3)), 10),
+  )
+
   const notifications: DB['notifications'] = [
+    {
+      id: uid(),
+      jobId: done1.id,
+      clientId: C.ana,
+      kind: 'ridicare',
+      channel: 'sms',
+      dueAt: at(-6, 16),
+      status: 'trimisa',
+      message: `Custom Tuning: lucrarea ${done1.code} este gata! Mașina te așteaptă în atelier, L–V 09:00–18:00.`,
+      sentAt: at(-6, 16, 5),
+    },
     {
       id: uid(),
       jobId: done1.id,
       clientId: C.ana,
       kind: 'retus_7z',
       channel: 'sms',
-      dueAt: at(1, 10),
-      status: 'programata',
-      message:
-        'Custom Tuning: folia are nevoie de un retuș la 7 zile. Te așteptăm în atelier — sună la 0722 000 000 pentru o oră.',
-      sentAt: null,
-    },
-    {
-      id: uid(),
-      jobId: done2.id,
-      clientId: C.mihai,
-      kind: 'retus_7z',
-      channel: 'sms',
-      dueAt: at(-8, 10),
+      dueAt: at(-5, 10),
       status: 'trimisa',
-      message: 'Custom Tuning: te așteptăm la retuș.',
-      sentAt: at(-8, 10, 5),
+      message: 'Custom Tuning: Te așteptăm la retuș în decurs de 7 zile. Sună-ne pentru o oră care ți se potrivește.',
+      sentAt: at(-5, 10, 2),
     },
     {
       id: uid(),
-      jobId: done2.id,
-      clientId: C.mihai,
+      jobId: done1.id,
+      clientId: C.ana,
       kind: 'retus_reminder_3z',
       channel: 'sms',
-      dueAt: at(-5, 10),
+      dueAt: done1Reminder,
       status: 'programata',
-      message: 'Custom Tuning: reamintire — retușul foliei este încă disponibil. Te așteptăm!',
+      message: 'Custom Tuning: Ai uitat de retuș? Te așteptăm la retuș pentru oferirea garanției lucrării.',
       sentAt: null,
     },
     {
@@ -693,6 +735,57 @@ export const buildSeed = (): DB => {
     },
   ]
 
+  /**
+   * Rolele se țin individual (fiecare cu numărul ei), de 15 m. Produsele de mai sus sunt
+   * prima rolă din fiecare; aici se completează restul rolelor și metrii rămași.
+   */
+  const ROLL_QTY: Record<string, number> = {
+    [S.ppfGloss]: 15,
+    [S.ppf182]: 6,
+    [S.satinGrey]: 15,
+    [S.tint20]: 15,
+  }
+  const MIN_QTY: Record<string, number> = { [S.ppfGloss]: 30, [S.tint20]: 15 }
+  const EXTRA_ROLLS: [base: string, id: string, rollNumber: string, qty: number][] = [
+    [S.ppfGloss, 'st-ppf-gloss-0', 'R-03', 8],
+    [S.ppfGloss, S.ppfGloss2, 'R-05', 15],
+    [S.ppfGloss, 'st-ppf-gloss-3', 'R-06', 15],
+    [S.ppf182, 'st-ppf-182-2', 'R-12', 15],
+    [S.satinGrey, S.satinGrey2, 'C-22', 15],
+    [S.tint20, 'st-tint-20-2', 'G-03', 15],
+    [S.tint20, 'st-tint-20-3', 'G-04', 10],
+  ]
+  const rolls = stock.map((i) =>
+    i.unit === 'm'
+      ? { ...i, qty: ROLL_QTY[i.id] ?? i.qty, minQty: MIN_QTY[i.id] ?? i.minQty, rollLength: 15 }
+      : i,
+  )
+  for (const [base, id, rollNumber, qty] of EXTRA_ROLLS) {
+    const b = rolls.find((i) => i.id === base)!
+    rolls.push({ ...b, id, rollNumber, qty })
+  }
+
+  /** consumul și mesajele deja trimise apar și în istoricul lucrării */
+  const addEvents = () => {
+    moves.push(...histMoves)
+    moves.sort((a, b) => b.at.localeCompare(a.at))
+    for (const m of moves) {
+      const j = jobs.find((x) => x.id === m.jobId)
+      const it = rolls.find((x) => x.id === m.stockItemId)
+      if (j && it)
+        j.events.push({ id: uid(), at: m.at, label: 'Consum folie scăzut din stoc', by: m.by, kind: 'stock', detail: `${it.name} #${it.rollNumber} ${m.delta} ${it.unit}` })
+    }
+    for (const n of notifications.filter((x) => x.status === 'trimisa')) {
+      const j = jobs.find((x) => x.id === n.jobId)
+      if (j) j.events.push({ id: uid(), at: n.sentAt!, label: `Mesaj trimis: ${n.kind === 'ridicare' ? 'mașina e gata de ridicat' : n.kind === 'retus_7z' ? 'invitație retuș' : 'notificare'}`, by: 'Cosmin Dinu', kind: 'notify', detail: n.channel.toUpperCase() })
+    }
+    // serviciile finalizate (BMW-ul demo e setat după reconstituire)
+    for (const j of jobs)
+      for (const sv of j.services.filter((x) => x.done && x.doneAt))
+        j.events.push({ id: uid(), at: sv.doneAt!, label: `Serviciu finalizat: ${label(sv)}`, by: j.assignee, kind: 'service', ...(sv.doneNote ? { detail: sv.doneNote } : {}) })
+    for (const j of jobs) j.events.sort((a, b) => a.at.localeCompare(b.at))
+  }
+
   const moves: DB['moves'] = [
     {
       id: uid(),
@@ -705,12 +798,165 @@ export const buildSeed = (): DB => {
     },
   ]
 
-  // istoric evenimente pentru lucrarea în curs
-  jobs[0].events = [
-    { id: uid(), at: at(-2, 12), label: 'Programare creată', by: 'Cosmin Dinu' },
-    { id: uid(), at: at(0, 9), label: 'Mașină primită în atelier', by: 'Andrei Pavel' },
-    { id: uid(), at: at(0, 9, 20), label: 'Status → În lucru', by: 'Andrei Pavel' },
-  ]
+  /**
+   * Istoric pe ultimele 12 luni: lucrări deja predate, generate determinist (aceleași la
+   * fiecare reset), cu sezonalitate (colantări mai multe primăvara–vara) și creștere ușoară.
+   * Stocul curent nu se modifică — consumul lor apare doar în jurnal și în rapoarte.
+   */
+  const histMoves: DB['moves'] = []
+  {
+    let seedN = 20261118
+    const rnd = () => {
+      seedN = (seedN * 1664525 + 1013904223) % 4294967296
+      return seedN / 4294967296
+    }
+    const pick = <T,>(xs: T[]) => xs[Math.floor(rnd() * xs.length)]
+    const between = (a: number, b: number) => Math.round((a + rnd() * (b - a)) / 50) * 50
+    const PAIRS: [string, string][] = [
+      [C.vlad, A.m4],
+      [C.vlad, A.amg],
+      [C.ana, A.golf],
+      [C.tribus, A.rs6],
+      [C.tribus, A.rs6],
+      [C.mihai, A.q3],
+      [C.elena, A.tesla],
+      [C.rares, A.supra],
+    ]
+    const WHO = ['Andrei Pavel', 'Cosmin Dinu', 'Robert Ilie', 'Daniel Marin']
+    const FOIL = [S.ppfGloss, S.ppfMatte, S.ppf182, S.satinGrey, S.glossBlack]
+    /** un serviciu tipic, cu preț și (la folii) consum pe rolă */
+    const make = (atIso: string): ServiceEntry => {
+      const r = rnd()
+      const roll = pick(FOIL)
+      const meters = Math.round(8 + rnd() * 14)
+      const base = (kind: ServiceKind, price: number, values: Record<string, string> = {}, elements?: string[]) => {
+        const e = svc(kind, values, { price, elements })
+        return { ...e, done: true, doneAt: atIso }
+      }
+      if (r < 0.3) {
+        const e = base('colantare', between(4200, 12500), { metersUsed: String(meters), crew: pick(WHO) }, ['Bară față', 'Capotă', 'Aripi față'])
+        e.rollUsages = [{ id: uid(), stockItemId: roll, qty: meters, appliedAt: atIso }]
+        return e
+      }
+      if (r < 0.42) return base('folie_geam', between(800, 1600), { vlt: '20%' })
+      if (r < 0.62) return base('detailing', between(900, 3400), { interior: 'Da', exterior: pick(['Un pas', 'Doi pași', 'Trei pași']) })
+      if (r < 0.74) return base('ceramica', between(1900, 5200), { 'Krytex Mega 8__used': 'Da' })
+      if (r < 0.82) return base('jante', between(3500, 9000), { maker: pick(['Vossen', 'BBS', 'HRE', 'OZ']) })
+      if (r < 0.88) return base('evacuare', between(4500, 12000), { maker: pick(['Akrapovič', 'Remus', 'Milltek']) })
+      if (r < 0.93) return base('suspensii', between(3500, 8000), { maker: pick(['KW', 'Bilstein', 'H&R']) })
+      if (r < 0.97) return base('chip_tuning', between(1800, 3200), { stage: 'Stage 1' })
+      return base('tuning', between(6000, 16000), { partsMaker: pick(['ABT', 'Maxton', 'Vorsteiner']) })
+    }
+
+    const hist: Job[] = []
+    for (let m = 12; m >= 1; m--) {
+      const monthStart = subDays(new Date(), m * 30)
+      const month = monthStart.getMonth() // 0 = ian
+      const season = month >= 2 && month <= 8 ? 2 : 0 // martie–septembrie: sezon de colantări
+      const count = 2 + Math.round((12 - m) / 4) + season + Math.floor(rnd() * 2)
+      for (let k = 0; k < count; k++) {
+        const startAt = iso(setHours(startOfDay(addDays(monthStart, Math.floor(rnd() * 28))), 9))
+        const [clientId, carId] = pick(PAIRS)
+        const n = rnd() < 0.3 ? 2 : 1
+        const services = Array.from({ length: n }, () => make(startAt))
+        const estimate = estimateRounded(services.map((x) => x.kind))
+        // execuția reală: între 85% și 135% din estimare
+        const actualStart = new Date(Date.parse(startAt) + 30 * 60_000)
+        const actualEnd = new Date(actualStart.getTime() + estimate * (0.85 + rnd() * 0.5) * 60_000)
+        const done = iso(actualEnd)
+        services.forEach((x) => {
+          x.doneAt = done
+          x.rollUsages = x.rollUsages.map((u) => ({ ...u, appliedAt: done }))
+        })
+        // mk() adaugă lucrarea în listă și o întoarce — păstrăm aceeași referință
+        hist.push(
+          mk({
+            clientId,
+            carId,
+            startAt,
+            services,
+            status: 'predat',
+            assignee: pick(WHO),
+            createdAt: iso(subDays(new Date(startAt), 4 + Math.floor(rnd() * 10))),
+            receivedAt: startAt,
+            workStartAt: iso(actualStart),
+            actualStartAt: iso(actualStart),
+            actualEndAt: done,
+            completedAt: done,
+            deliveryAt: done,
+            handedOverAt: iso(addDays(actualEnd, 1)),
+          }),
+        )
+      }
+    }
+    // codurile istoricului sunt mai mici decât ale programărilor curente, în ordine cronologică
+    hist
+      .sort((a, b) => a.startAt.localeCompare(b.startAt))
+      .forEach((j, i) => {
+        j.code = `PRG-${1960 + i}`
+        for (const x of j.services)
+          for (const u of x.rollUsages)
+            histMoves.push({
+              id: uid(),
+              stockItemId: u.stockItemId,
+              delta: -u.qty,
+              reason: `Consum lucrare ${j.code}`,
+              jobId: j.id,
+              at: j.actualEndAt!,
+              by: j.assignee,
+            })
+      })
+  }
+
+  /**
+   * Istoric reconstituit din starea fiecărei lucrări demo (creare, primire, execuție, stoc,
+   * mesaje), ca să nu apară „Fără evenimente”. Autorii: managerul creează, responsabilul lucrează.
+   */
+  const label = (s: ServiceEntry) => (s.kind === 'custom' && s.values.title) || serviceDef(s.kind).label
+  for (const j of jobs) {
+    const E: Job['events'] = []
+    const push = (atIso: string | null | undefined, l: string, kind: NonNullable<Job['events'][number]['kind']>, by: string, detail?: string) =>
+      atIso && E.push({ id: uid(), at: atIso, label: l, by, kind, ...(detail ? { detail } : {}) })
+    push(j.createdAt, 'Programare creată', 'create', 'Cosmin Dinu', `${j.services.map(label).join(' + ')} · primire ${fmtDT(j.startAt)}`)
+    if (j.workStartAt && j.status === 'programat')
+      push(j.createdAt, 'Execuție planificată', 'plan', 'Cosmin Dinu', `începe ${fmtDT(j.workStartAt)}`)
+    if (j.photos.some((p) => !p.serviceId))
+      push(j.receivedAt ?? j.startAt, 'Poze adăugate la primire', 'photo', j.assignee, `${j.photos.filter((p) => !p.serviceId).length} poze`)
+    if (j.status !== 'programat') {
+      push(j.receivedAt ?? j.startAt, 'Mașină primită în atelier', 'reception', j.assignee, `programată pentru ${fmtDT(j.startAt)}`)
+      push(j.actualStartAt, 'Execuție începută', 'work', j.assignee)
+      push(j.actualStartAt, 'Status → În lucru', 'status', j.assignee)
+    }
+    if (j.status === 'blocat') push(at(-1, 11), 'Status → Blocat', 'status', j.assignee, j.blockedReason)
+    if (j.actualStartAt && j.actualEndAt)
+      push(
+        j.actualEndAt,
+        'Execuție finalizată',
+        'work',
+        j.assignee,
+        `efectiv ${((Date.parse(j.actualEndAt) - Date.parse(j.actualStartAt)) / 3_600_000).toFixed(1)} h · estimat ${(j.estimateMin / 60).toFixed(1)} h`,
+      )
+    if (j.completedAt) push(j.completedAt, 'Status → Finalizat', 'status', j.assignee)
+    if (j.handedOverAt) {
+      push(j.handedOverAt, 'Status → Predat', 'status', 'Cosmin Dinu')
+      if (j.services.some((x) => serviceDef(x.kind).retouch))
+        push(j.handedOverAt, 'Retuș programat', 'retouch', 'Cosmin Dinu', 'SMS invitație a doua zi · reminder dacă nu vine în 7 zile lucrătoare')
+    }
+    j.events = E.sort((a, b) => a.at.localeCompare(b.at))
+  }
+  // colantarea e gata, protecția ceramică urmează — se vede pe tracking, cu poza „după”
+  const wrap = jobs[0].services.find((x) => x.kind === 'colantare')
+  if (wrap) {
+    Object.assign(wrap, {
+      done: true,
+      doneAt: at(0, 15),
+      doneNote: 'PPF aplicat pe bară, capotă, aripi, praguri și oglinzi. Urmează protecția ceramică.',
+    })
+    jobs[0].photos.push({
+      ...demoPhoto('ppf-aplicat.svg', 'PPF aplicat — gata pentru protecția ceramică', 0),
+      serviceId: wrap.id,
+    })
+  }
 
   /** Echipa completă a atelierului — 30 de oameni, cu vechimi diferite. */
   const TEAM: [id: string, name: string, role: DB['staff'][number]['role'], position: string, hire: string][] = [
@@ -854,11 +1100,13 @@ export const buildSeed = (): DB => {
     })
   })
 
+  addEvents()
+
   return {
     clients,
     cars,
     jobs,
-    stock,
+    stock: rolls,
     moves,
     notifications,
     staff,

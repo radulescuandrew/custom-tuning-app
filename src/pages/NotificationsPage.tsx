@@ -3,22 +3,17 @@ import { Link } from 'react-router-dom'
 import { parseISO } from 'date-fns'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Button, Card, Chip, EmptyState } from '@/components/ui'
-import { carName, clientName, useStore } from '@/data/store'
+import { NOTIF_KIND_LABEL, carName, clientName, useStore } from '@/data/store'
 import { daysUntil, fmtDate } from '@/lib/utils'
 import { IconMail, IconPhone } from '@/components/Icons'
 
-const KIND_LABEL: Record<string, string> = {
-  retus_7z: 'Retuș colantare · 7 zile lucrătoare',
-  retus_reminder_3z: 'Reminder retuș · +3 zile',
-  detailing_6l: 'Invitație detailing · 6 luni · −10%',
-  ridicare: 'Ridicare mașină',
-  custom: 'Notificare',
-}
+const KIND_LABEL = NOTIF_KIND_LABEL
 
 const KIND_TONE: Record<string, 'gold' | 'sky' | 'mint'> = {
   retus_7z: 'gold',
   retus_reminder_3z: 'sky',
   detailing_6l: 'mint',
+  ridicare: 'mint',
 }
 
 export default function NotificationsPage() {
@@ -44,7 +39,7 @@ export default function NotificationsPage() {
     <>
       <PageHeader
         title="Notificări clienți"
-        subtitle="Retușurile la colantare se programează automat la finalizare (7 zile lucrătoare + reminder la 3 zile). Clienții de detailing primesc automat, la 6 luni, o invitație cu 10% reducere pentru locurile libere din calendar."
+        subtitle="La „Finalizat” clientul e anunțat că poate ridica mașina. La „Predat”, pentru colantare și folii, pleacă a doua zi invitația la retuș, iar dacă retușul nu e marcat făcut, un reminder la 3 zile după cele 7 zile lucrătoare. Clienții de detailing primesc la 6 luni o invitație cu 10% reducere."
       />
 
       <div className="mb-4 flex flex-wrap gap-2">

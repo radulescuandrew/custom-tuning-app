@@ -3,10 +3,11 @@ import { isSameDay, isWithinInterval, parseISO, startOfMonth, endOfMonth } from 
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Button, Card, EmptyState } from '@/components/ui'
 import { StatusBadge } from '@/components/StatusBadge'
-import { carName, clientName, jobTotal, useStore } from '@/data/store'
-import { serviceDef } from '@/data/serviceCatalog'
+import { NOTIF_KIND_LABEL, carName, clientName, jobTotal, useStore } from '@/data/store'
+import { serviceLabel } from '@/data/serviceCatalog'
 import { fmtDate } from '@/lib/utils'
 import { IconChevronRight, IconWarn } from '@/components/Icons'
+import { groupStock, isRollCategory, rollSummary } from '@/lib/stockGroups'
 import { useMoney } from '@/components/Money'
 
 export default function DashboardPage() {
@@ -16,12 +17,12 @@ export default function DashboardPage() {
   const month = { start: startOfMonth(now), end: endOfMonth(now) }
 
   const today = jobs.filter((j) => isSameDay(parseISO(j.startAt), now) && j.status !== 'anulat')
-  const active = jobs.filter((j) => j.status === 'in_lucru' || j.status === 'asteapta_piese')
+  const active = jobs.filter((j) => j.status === 'in_lucru' || j.status === 'blocat')
   const monthJobs = jobs.filter(
     (j) => isWithinInterval(parseISO(j.startAt), month) && j.status !== 'anulat',
   )
   const revenue = monthJobs.reduce((s, j) => s + jobTotal(j), 0)
-  const lowStock = stock.filter((s) => s.qty <= s.minQty)
+  const lowStock = groupStock(stock).filter((g) => g.low)
   const dueNotifs = notifications.filter(
     (n) => n.status === 'programata' && parseISO(n.dueAt) <= now,
   )
@@ -95,7 +96,7 @@ export default function DashboardPage() {
                             {carName(car)} · <span className="text-fg-mute">{car?.plate}</span>
                           </div>
                           <div className="mt-0.5 truncate text-[12.5px] text-fg-mute">
-                            {j.services.map((s) => serviceDef(s.kind).label).join(' + ')} ·{' '}
+                            {j.services.map((s) => serviceLabel(s)).join(' + ')} ·{' '}
                             {clientName(client)} · {j.assignee}
                           </div>
                         </div>
@@ -130,7 +131,7 @@ export default function DashboardPage() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-semibold">{clientName(client)}</div>
                         <div className="text-[12px] text-fg-mute">
-                          {n.kind === 'retus_7z' ? 'Retuș 7 zile' : n.kind === 'retus_reminder_3z' ? 'Reminder retuș' : 'Notificare'}
+                          {NOTIF_KIND_LABEL[n.kind]}
                         </div>
                       </div>
                       <Badge tone="ember">{fmtDate(n.dueAt, 'dd MMM')}</Badge>
@@ -154,17 +155,18 @@ export default function DashboardPage() {
               <EmptyState text="Stoc în parametri." />
             ) : (
               <ul className="divide-y divide-line">
-                {lowStock.map((s) => (
-                  <li key={s.id} className="flex items-center gap-3 px-5 py-3">
+                {lowStock.map((g) => (
+                  <li key={g.key} className="flex items-center gap-3 px-5 py-3">
                     <IconWarn width={16} height={16} className="text-ember" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold">{s.name}</div>
+                      <div className="truncate text-sm font-semibold">{g.name}</div>
                       <div className="font-mono text-[11px] text-fg-faint">
-                        {s.maker} · rola #{s.rollNumber}
+                        {g.maker}
+                        {isRollCategory(g.category) ? ` · ${rollSummary(g)}` : ` · ${g.items.length} lot(uri)`}
                       </div>
                     </div>
                     <span className="font-mono text-[13px] font-bold text-ember">
-                      {s.qty} {s.unit}
+                      {g.total} {g.unit}
                     </span>
                   </li>
                 ))}

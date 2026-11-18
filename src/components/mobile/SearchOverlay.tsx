@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { carName, clientName, useStore } from '@/data/store'
+import { activeClients, carName, clientName, useStore } from '@/data/store'
 import { IconChevronLeft } from '../Icons'
 
 /** Căutarea globală — aceeași sursă pentru desktop și pentru overlay-ul mobil. */
@@ -10,7 +10,7 @@ export function useGlobalSearch(q: string) {
     const s = q.trim().toLowerCase()
     if (s.length < 2) return []
     const out: { label: string; sub: string; to: string }[] = []
-    clients.forEach((c) => {
+    activeClients(clients).forEach((c) => {
       const name = clientName(c)
       if ([name, c.phone, c.vatId, c.cnp].join(' ').toLowerCase().includes(s))
         out.push({ label: name, sub: c.phone || 'client', to: `/clienti/${c.id}` })

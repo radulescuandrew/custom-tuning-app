@@ -7,11 +7,11 @@ import {
   TIME_OFF_LABEL,
   canSeeTimeOff,
   carName,
-  clientName,
+  activeClients, clientName,
   useCurrentUser,
   useStore,
 } from '@/data/store'
-import { SERVICE_CATALOG, estimateRounded, serviceDef } from '@/data/serviceCatalog'
+import { activeServices, estimateRounded, servicePrice } from '@/data/serviceCatalog'
 import type { ServiceKind, TimeOffType } from '@/data/types'
 import { cx, uid } from '@/lib/utils'
 import ClientModal from './ClientModal'
@@ -92,7 +92,7 @@ export default function QuickCreateModal({
     if (!estimateTouched) setEstimate(suggested)
   }, [suggested, estimateTouched])
   const days = range ? differenceInCalendarDays(parseISO(range.endDate), parseISO(range.startDate)) + 1 : 0
-  const total = kinds.reduce((s, k) => s + serviceDef(k).defaultPrice, 0)
+  const total = kinds.reduce((s, k) => s + servicePrice(k, settings), 0)
 
   if (!range) return null
 
@@ -182,7 +182,7 @@ export default function QuickCreateModal({
         values: {},
         elements: [],
         rollUsages: [],
-        price: serviceDef(k).defaultPrice,
+        price: servicePrice(k, settings),
         done: false,
       })),
       photos: [],
@@ -255,7 +255,7 @@ export default function QuickCreateModal({
                 }}
               >
                 <option value="">— alege client —</option>
-                {clients.map((c) => (
+                {activeClients(clients).map((c) => (
                   <option key={c.id} value={c.id}>
                     {clientName(c)} · {c.phone}
                   </option>
@@ -291,7 +291,7 @@ export default function QuickCreateModal({
           <div className="sm:col-span-2">
             <div className="mono-label mb-2">Servicii</div>
             <div className="flex flex-wrap gap-2">
-              {SERVICE_CATALOG.map((s) => {
+              {activeServices(settings).map((s) => {
                 const on = kinds.includes(s.kind)
                 return (
                   <button

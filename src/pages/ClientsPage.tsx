@@ -3,32 +3,34 @@ import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge, Button, Card, Chip, EmptyState, TableWrap, Td, Th } from '@/components/ui'
 import ClientModal from '@/components/modals/ClientModal'
-import { clientName, useStore } from '@/data/store'
+import { activeClients, clientName, useStore } from '@/data/store'
 import { IconChevronRight, IconPlus } from '@/components/Icons'
 
 export default function ClientsPage() {
   const nav = useNavigate()
   const { clients, cars, jobs } = useStore()
   const [q, setQ] = useState('')
-  const [type, setType] = useState<'toti' | 'pf' | 'pj'>('toti')
+  const [type, setType] = useState<'toti' | 'pf' | 'pj' | 'arhivati'>('toti')
+  const active = activeClients(clients)
+  const archived = clients.filter((c) => c.archivedAt)
   const [modal, setModal] = useState(false)
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase()
-    return clients
-      .filter((c) => (type === 'toti' ? true : c.type === type))
+    return (type === 'arhivati' ? archived : active)
+      .filter((c) => (type === 'toti' || type === 'arhivati' ? true : c.type === type))
       .filter((c) =>
         !s
           ? true
           : [clientName(c), c.phone, c.email, c.cnp, c.vatId].join(' ').toLowerCase().includes(s),
       )
-  }, [clients, q, type])
+  }, [active, archived, q, type])
 
   return (
     <>
       <PageHeader
         title="Clienți"
-        subtitle={`${clients.length} clienți · ${cars.length} mașini`}
+        subtitle={`${active.length} clienți · ${cars.length} mașini`}
         action={
           <Button variant="primary" onClick={() => setModal(true)}>
             <IconPlus width={16} height={16} /> Client nou
@@ -42,6 +44,11 @@ export default function ClientsPage() {
             {t === 'toti' ? 'Toți' : t === 'pf' ? 'Persoane fizice' : 'Firme'}
           </Chip>
         ))}
+        {archived.length > 0 && (
+          <Chip active={type === 'arhivati'} onClick={() => setType('arhivati')}>
+            Arhivați <span className="ml-1 font-mono text-[11px] opacity-70">{archived.length}</span>
+          </Chip>
+        )}
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}

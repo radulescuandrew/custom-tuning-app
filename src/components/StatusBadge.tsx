@@ -5,7 +5,7 @@ import { Badge, type Tone } from './ui'
 export const STATUS_TONE: Record<JobStatus, Tone> = {
   programat: 'sky',
   in_lucru: 'gold',
-  asteapta_piese: 'ember',
+  blocat: 'ember',
   finalizat: 'mint',
   predat: 'neutral',
   anulat: 'rose',

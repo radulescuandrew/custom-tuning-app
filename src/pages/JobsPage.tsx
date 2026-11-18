@@ -8,7 +8,7 @@ import JobCalendar from '@/components/calendar/JobCalendar'
 import MobileCalendar from '@/components/calendar/MobileCalendar'
 import { useIsDesktop } from '@/hooks/useMediaQuery'
 import { carName, clientName, jobTotal, statusLabel, useStore } from '@/data/store'
-import { serviceDef } from '@/data/serviceCatalog'
+import { serviceLabel } from '@/data/serviceCatalog'
 import type { JobStatus } from '@/data/types'
 import { fmtDateTime } from '@/lib/utils'
 import { IconChevronRight, IconPlus, IconSearch } from '@/components/Icons'
@@ -18,7 +18,7 @@ const FILTERS: { key: JobStatus | 'toate'; label: string }[] = [
   { key: 'toate', label: 'Toate' },
   { key: 'programat', label: 'Programate' },
   { key: 'in_lucru', label: 'În lucru' },
-  { key: 'asteapta_piese', label: 'Așteaptă piese' },
+  { key: 'blocat', label: 'Blocat' },
   { key: 'finalizat', label: 'Finalizate' },
   { key: 'predat', label: 'Predate' },
 ]
@@ -28,7 +28,7 @@ export default function JobsPage() {
   const nav = useNavigate()
   const isDesktop = useIsDesktop()
   const { jobs, clients, cars } = useStore()
-  const [view, setView] = useState<'calendar' | 'lista'>('calendar')
+  const [view, setView] = useState<'calendar' | 'lista'>('lista')
   const [filter, setFilter] = useState<JobStatus | 'toate'>('toate')
   const [q, setQ] = useState('')
 
@@ -152,7 +152,7 @@ export default function JobsPage() {
                         <div className="font-mono text-[11px] text-fg-faint">{car?.plate}</div>
                       </Td>
                       <Td className="text-fg-mute">
-                        {j.services.map((s) => serviceDef(s.kind).label).join(', ') || '—'}
+                        {j.services.map((s) => serviceLabel(s)).join(', ') || '—'}
                       </Td>
                       <Td className="text-fg-mute">{fmtDateTime(j.startAt)}</Td>
                       <Td className="text-fg-mute">
@@ -187,7 +187,7 @@ export default function JobsPage() {
         <div className="mt-4 flex flex-wrap items-center gap-4 text-[12px] text-fg-faint">
           <span>Dublu-click pe zi = programare nouă.</span>
           <span className="flex items-center gap-3">
-            {(['programat', 'in_lucru', 'asteapta_piese', 'finalizat'] as JobStatus[]).map((s) => (
+            {(['programat', 'in_lucru', 'blocat', 'finalizat'] as JobStatus[]).map((s) => (
               <span key={s} className="flex items-center gap-1.5">
                 <StatusBadge status={s} />
               </span>

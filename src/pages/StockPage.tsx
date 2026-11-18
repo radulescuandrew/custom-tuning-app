@@ -11,10 +11,7 @@ import {
   Modal,
   Select,
 } from '@/components/ui'
-import { type Column, DataList } from '@/components/ui/DataList'
-import { Sheet } from '@/components/ui/Sheet'
 import { Stepper } from '@/components/ui/Stepper'
-import { useIsDesktop } from '@/hooks/useMediaQuery'
 import { useStore } from '@/data/store'
 import {
   STOCK_PRESETS,
@@ -24,6 +21,17 @@ import {
 } from '@/data/stockPresets'
 import type { StockCategory, StockItem } from '@/data/types'
 import { cx, fmtDateTime } from '@/lib/utils'
+import {
+  type StockGroup,
+  defaultRollLength,
+  groupStock,
+  incRollNumber,
+  isRollCategory,
+  rollLength,
+  rollSummary,
+} from '@/lib/stockGroups'
+
+type SortKey = 'implicit' | 'cant_desc' | 'cant_asc' | 'nume'
 import { IconPlus, IconTrash } from '@/components/Icons'
 
 const CATS: { key: StockCategory | 'toate'; label: string }[] = [
@@ -35,7 +43,6 @@ const CATS: { key: StockCategory | 'toate'; label: string }[] = [
   { key: 'consumabile', label: 'Consumabile' },
 ]
 
-const catLabel = (c: StockCategory) => CATS.find((x) => x.key === c)?.label ?? c
 
 const emptyItem = {
   category: 'ppf' as StockCategory,
@@ -48,13 +55,18 @@ const emptyItem = {
   qty: '',
   minQty: '10',
   location: '',
+  /** doar pentru role: lungimea fiecărei role și câte role se adaugă deodată */
+  rollLength: '15',
+  count: '1',
 }
 
 export default function StockPage() {
-  const isDesktop = useIsDesktop()
   const { stock, moves, jobs, addStockItem, removeStockItem, adjustStock, toast } = useStore()
   const [cat, setCat] = useState<StockCategory | 'toate'>('toate')
   const [q, setQ] = useState('')
+  const [sort, setSort] = useState<SortKey>('implicit')
+  /** „Adaugă role” pe un produs existent — titlul modalului */
+  const [addTo, setAddTo] = useState<string | null>(null)
   const [newOpen, setNewOpen] = useState(false)
   const [form, setForm] = useState(emptyItem)
   const [presetKey, setPresetKey] = useState('')
@@ -62,9 +74,6 @@ export default function StockPage() {
   const [detailsOpen, setDetailsOpen] = useState(false)
   /** furnizor scris de mână, în afara listei */
   const [otherMaker, setOtherMaker] = useState(false)
-  const [adjust, setAdjust] = useState<{ item: StockItem; sign: 1 | -1 } | null>(null)
-  const [adjustQty, setAdjustQty] = useState('')
-  const [adjustReason, setAdjustReason] = useState('')
 
   /** Pe telefon nu se ajustează cu +/− dintr-un rând de tabel: se atinge cardul și se corectează
    *  cantitatea finală într-un sheet. `adjustStock` primește tot o diferență. */
@@ -103,7 +112,23 @@ export default function StockPage() {
       )
   }, [stock, cat, q])
 
-  const low = stock.filter((s) => s.qty <= s.minQty)
+  /** produse grupate + sortare (oferta: „ordonare după cantitate”) */
+  const groups = useMemo(() => {
+    const gs = groupStock(list)
+    if (sort === 'cant_desc') gs.sort((a, b) => b.total - a.total)
+    if (sort === 'cant_asc') gs.sort((a, b) => a.total - b.total)
+    if (sort === 'nume') gs.sort((a, b) => a.name.localeCompare(b.name, 'ro'))
+    return gs
+  }, [list, sort])
+
+  /** secțiuni pe categorie, în ordinea filtrelor */
+  const sections = CATS.filter((c) => c.key !== 'toate' && (cat === 'toate' || c.key === cat))
+    .map((c) => ({ ...c, gs: groups.filter((g) => g.category === c.key) }))
+    .filter((sec) => sec.gs.length > 0)
+
+  const allGroups = groupStock(stock)
+  const low = allGroups.filter((g) => g.low)
+  const rollCount = stock.filter((i) => isRollCategory(i.category) && i.qty > 0).length
 
   const suppliers = knownSuppliers(form.category, stock)
   const locations = knownLocations(stock)
@@ -111,7 +136,13 @@ export default function StockPage() {
 
   const openNew = () => {
     const category: StockCategory = cat === 'toate' ? 'ppf' : cat
-    setForm({ ...emptyItem, category, rollNumber: nextRollNumber(category, stock) })
+    setForm({
+      ...emptyItem,
+      category,
+      rollNumber: nextRollNumber(category, stock),
+      rollLength: String(defaultRollLength(category)),
+    })
+    setAddTo(null)
     setPresetKey('')
     setOtherMaker(false)
     setDetailsOpen(false)
@@ -135,7 +166,31 @@ export default function StockPage() {
       minQty: String(p.minQty),
       location: p.location,
       rollNumber: nextRollNumber(p.category, stock),
+      rollLength: String(defaultRollLength(p.category)),
     }))
+  }
+
+  /** „+ role” pe un produs existent: același produs, numere de rolă noi */
+  const openAddRolls = (g: StockGroup) => {
+    const b = g.items[g.items.length - 1]
+    setForm({
+      ...emptyItem,
+      category: b.category,
+      maker: b.maker,
+      name: b.name,
+      finish: b.finish,
+      width: b.width,
+      unit: b.unit,
+      minQty: String(g.minQty),
+      location: b.location,
+      rollNumber: nextRollNumber(b.category, stock),
+      rollLength: String(rollLength(b)),
+    })
+    setAddTo(g.name)
+    setPresetKey('')
+    setOtherMaker(false)
+    setDetailsOpen(false)
+    setNewOpen(true)
   }
 
   const changeCategory = (category: StockCategory) => {
@@ -146,130 +201,169 @@ export default function StockPage() {
       unit: category === 'ceramica' || category === 'consumabile' ? 'buc' : 'm',
       width: category === 'ceramica' || category === 'consumabile' ? '' : f.width || '1.52',
       rollNumber: nextRollNumber(category, stock),
+      rollLength: String(defaultRollLength(category)),
     }))
   }
 
+  const isRollForm = isRollCategory(form.category)
+
   const saveItem = () => {
     if (!form.name.trim()) return
-    addStockItem({
-      ...form,
-      qty: Number(form.qty || 0),
-      minQty: Number(form.minQty || 0),
-    })
-    toast('Produs adăugat în stoc')
+    const base = {
+      category: form.category,
+      maker: form.maker,
+      name: form.name,
+      rollNumber: form.rollNumber,
+      finish: form.finish,
+      width: form.width,
+      unit: form.unit,
+      location: form.location,
+    }
+    if (isRollForm) {
+      // fiecare rolă e un rând separat, cu numărul ei — consumul se bifează pe rolă
+      const n = Math.max(1, Math.floor(Number(form.count) || 1))
+      const len = Number(form.rollLength) || defaultRollLength(form.category)
+      for (let k = 0; k < n; k++)
+        addStockItem({
+          ...base,
+          rollNumber: incRollNumber(form.rollNumber, k),
+          qty: len,
+          rollLength: len,
+          minQty: Number(form.minQty || 0),
+        })
+      toast(
+        n === 1
+          ? `Rola #${form.rollNumber} adăugată (${len} m)`
+          : `${n} role adăugate: #${form.rollNumber} – #${incRollNumber(form.rollNumber, n - 1)} (${n * len} m)`,
+      )
+    } else {
+      addStockItem({ ...base, qty: Number(form.qty || 0), minQty: Number(form.minQty || 0) })
+      toast('Produs adăugat în stoc')
+    }
     setForm(emptyItem)
     setPresetKey('')
+    setAddTo(null)
     setNewOpen(false)
   }
 
-  const applyAdjust = () => {
-    if (!adjust || !adjustQty) return
-    adjustStock(
-      adjust.item.id,
-      adjust.sign * Number(adjustQty),
-      adjustReason || (adjust.sign > 0 ? 'Recepție marfă' : 'Consum manual'),
-    )
-    toast(`${adjust.sign > 0 ? 'Adăugat' : 'Scăzut'} ${adjustQty}${adjust.item.unit}`)
-    setAdjust(null)
-    setAdjustQty('')
-    setAdjustReason('')
-  }
-
-  const stateBadge = (i: StockItem) =>
-    i.qty <= 0 ? (
+  const groupBadge = (g: StockGroup) =>
+    g.total <= 0 ? (
       <Badge tone="rose">epuizat</Badge>
-    ) : i.qty <= i.minQty ? (
-      <Badge tone="ember">sub prag ({i.minQty})</Badge>
+    ) : g.low ? (
+      <Badge tone="ember">sub prag</Badge>
     ) : (
       <Badge tone="mint">ok</Badge>
     )
 
-  const columns: Column<StockItem>[] = [
-    {
-      key: 'produs',
-      header: 'Produs',
-      cell: (i) => (
-        <>
-          <div className="font-semibold">{i.name}</div>
-          <div className="font-mono text-[11px] text-fg-faint">
-            {i.maker}
-            {i.width && ` · ${i.width}m`}
-            {i.location && ` · ${i.location}`}
-          </div>
-        </>
-      ),
-    },
-    { key: 'cat', header: 'Categorie', cell: (i) => catLabel(i.category), className: 'text-fg-mute' },
-    {
-      key: 'rola',
-      header: 'Rolă / lot',
-      cell: (i) => `#${i.rollNumber || '—'}`,
-      className: 'font-mono text-brand-400',
-    },
-    {
-      key: 'stoc',
-      header: 'Stoc',
-      cell: (i) => `${i.qty} ${i.unit}`,
-      className: 'font-mono font-bold',
-    },
-    { key: 'stare', header: 'Stare', cell: stateBadge },
-    {
-      key: 'actiuni',
-      header: '',
-      cell: (i) => (
-        <div className="flex items-center gap-1.5">
-          <Button size="sm" variant="subtle" onClick={() => setAdjust({ item: i, sign: 1 })}>
-            ＋
-          </Button>
-          <Button size="sm" variant="subtle" onClick={() => setAdjust({ item: i, sign: -1 })}>
-            －
-          </Button>
-          <button
-            onClick={() => {
-              if (confirm(`Ștergi ${i.name}?`)) removeStockItem(i.id)
-            }}
-            className="ml-1 text-fg-faint hover:text-rose"
-          >
-            <IconTrash width={15} height={15} />
-          </button>
-        </div>
-      ),
-    },
-  ]
+  const needle = q.trim().toLowerCase()
 
-  const renderCard = (i: StockItem) => (
-    <div className="flex items-start gap-3">
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-bold">{i.name}</div>
-        <div className="truncate font-mono text-[11px] text-fg-faint">
-          {i.maker} · #{i.rollNumber || '—'}
+  /** O rolă (sau un lot) ca „pastilă”: număr, nivel de umplere, metri rămași. Click = corectare. */
+  const rollChip = (i: StockItem) => {
+    const roll = isRollCategory(i.category)
+    const pct = Math.max(0, Math.min(100, (i.qty / rollLength(i)) * 100))
+    const hit = needle !== '' && i.rollNumber.toLowerCase().includes(needle)
+    return (
+      <button
+        key={i.id}
+        onClick={() => setSheetItem(i)}
+        title={`#${i.rollNumber} · ${i.qty} ${i.unit}${i.location ? ` · ${i.location}` : ''} — click pentru corectare`}
+        className={cx(
+          'w-[86px] rounded-lg border px-2 py-1.5 text-left transition hover:border-brand-500/60 hover:bg-brand-500/5',
+          i.qty <= 0 ? 'border-dashed border-line opacity-55' : 'border-line bg-ink-750/50',
+          hit && 'ring-2 ring-brand-500/60',
+        )}
+      >
+        <div className="truncate font-mono text-[11px] font-semibold text-fg-dim">#{i.rollNumber || '—'}</div>
+        {roll && (
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-black/[0.08]">
+            <div
+              className={cx('h-full rounded-full', pct >= 99.9 ? 'bg-mint' : pct > 0 ? 'bg-ember' : '')}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
+        <div className="mt-1 font-mono text-[11px] text-fg-mute">
+          {i.qty <= 0 ? 'goală' : roll ? `${i.qty}/${rollLength(i)} m` : `${i.qty} ${i.unit}`}
         </div>
-        <div className="mt-1.5 truncate font-mono text-[11px] text-fg-mute">
-          {[catLabel(i.category), i.width && `${i.width}m`, i.finish, i.location]
-            .filter(Boolean)
-            .join(' · ')}
+      </button>
+    )
+  }
+
+  /** Cardul unui produs: total mare, rezumat „3 role + 8 m”, rolele ca pastile. */
+  const productCard = (g: StockGroup) => {
+    const roll = isRollCategory(g.category)
+    // rolele cu stoc întâi, cele goale la final
+    const items = [...g.items].sort((a, b) => Number(a.qty <= 0) - Number(b.qty <= 0))
+    return (
+      <div
+        key={g.key}
+        className={cx(
+          'flex flex-col rounded-xl border bg-ink-850 p-4',
+          g.low ? 'border-ember/40' : 'border-line',
+        )}
+      >
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold leading-snug">{g.name}</div>
+            <div className="mt-0.5 truncate font-mono text-[11px] text-fg-faint">
+              {[
+                g.maker,
+                g.width && `${g.width} m`,
+                g.finish === 'lucioasa' ? 'lucioasă' : g.finish === 'mata' ? 'mată' : '',
+                g.location,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </div>
+          </div>
+          {groupBadge(g)}
         </div>
-      </div>
-      <div className="flex flex-none flex-col items-end gap-1">
-        <span
-          className={cx(
-            'font-mono text-[20px] leading-none font-bold',
-            i.qty <= 0 ? 'text-rose' : i.qty <= i.minQty ? 'text-ember' : 'text-fg',
+
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div>
+            <div
+              className={cx(
+                'font-mono text-[26px] leading-none font-bold',
+                g.total <= 0 ? 'text-rose' : g.low ? 'text-ember' : 'text-fg',
+              )}
+            >
+              {g.total}
+              <span className="ml-1 text-[13px] font-semibold text-fg-mute">{g.unit}</span>
+            </div>
+            <div className="mt-1.5 text-[12.5px] text-fg-mute">
+              {roll ? (
+                <strong className="font-semibold text-fg-dim">{rollSummary(g)}</strong>
+              ) : (
+                `${g.items.length} ${g.items.length === 1 ? 'lot' : 'loturi'}`
+              )}{' '}
+              · prag {g.minQty} {g.unit}
+            </div>
+          </div>
+          {roll ? (
+            <Button size="sm" onClick={() => openAddRolls(g)}>
+              <IconPlus width={13} height={13} /> Role
+            </Button>
+          ) : (
+            g.items.length === 1 && (
+              <Button size="sm" onClick={() => setSheetItem(g.items[0])}>
+                Corectează
+              </Button>
+            )
           )}
-        >
-          {i.qty}
-          <span className="ml-0.5 text-[12px]">{i.unit}</span>
-        </span>
-        {i.qty <= i.minQty && stateBadge(i)}
+        </div>
+
+        {(roll || g.items.length > 1) && (
+          <div className="mt-3 flex flex-wrap gap-1.5 border-t border-line pt-3">{items.map(rollChip)}</div>
+        )}
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <>
       <PageHeader
         title="Stoc"
-        subtitle={`${stock.length} produse · ${low.length} sub prag`}
+        subtitle={`${allGroups.length} produse · ${rollCount} role în stoc · ${low.length} sub prag`}
         action={
           <Button variant="primary" onClick={openNew}>
             <IconPlus width={16} height={16} /> Adaugă produs
@@ -283,36 +377,51 @@ export default function StockPage() {
             {c.label}
           </Chip>
         ))}
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortKey)}
+          className="rounded-lg border border-line-strong bg-ink-750 px-3 py-2 text-[13px] outline-none md:ml-auto md:py-1.5"
+          aria-label="Ordonare"
+        >
+          <option value="implicit">Ordonare: implicită</option>
+          <option value="cant_desc">Cantitate: mare → mică</option>
+          <option value="cant_asc">Cantitate: mică → mare</option>
+          <option value="nume">Nume A–Z</option>
+        </select>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Caută produs, rolă…"
-          className="w-full rounded-lg border border-line-strong bg-ink-750 px-3 py-2 text-[16px] outline-none focus:border-brand-500/60 md:ml-auto md:w-60 md:py-1.5 md:text-[13px]"
+          className="w-full rounded-lg border border-line-strong bg-ink-750 px-3 py-2 text-[16px] outline-none focus:border-brand-500/60 md:w-60 md:py-1.5 md:text-[13px]"
         />
       </div>
 
       {/* grid-cols-1 = minmax(0,1fr); fără el coloana implicită `auto` se lățește după conținut */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_330px]">
-        {isDesktop ? (
-          <Card pad={false}>
-            <DataList
-              items={list}
-              getKey={(i) => i.id}
-              columns={columns}
-              renderCard={renderCard}
-              empty="Niciun produs."
-            />
-          </Card>
-        ) : (
-          <DataList
-            items={list}
-            getKey={(i) => i.id}
-            columns={columns}
-            renderCard={renderCard}
-            onRowClick={setSheetItem}
-            empty="Niciun produs."
-          />
-        )}
+        <div className="flex min-w-0 flex-col gap-6">
+          {sections.length === 0 && (
+            <Card>
+              <EmptyState text="Niciun produs." />
+            </Card>
+          )}
+          {sections.map((sec) => {
+            const total = Math.round(sec.gs.reduce((sum, g) => sum + g.total, 0) * 100) / 100
+            const lowCount = sec.gs.filter((g) => g.low).length
+            return (
+              <section key={sec.key}>
+                <div className="mb-2.5 flex items-baseline gap-2">
+                  <h2 className="text-[15px] font-bold">{sec.label}</h2>
+                  <span className="font-mono text-[12px] text-fg-faint">
+                    {sec.gs.length} {sec.gs.length === 1 ? 'produs' : 'produse'} · {total}{' '}
+                    {sec.gs[0].unit}
+                    {lowCount > 0 && <span className="text-ember"> · {lowCount} sub prag</span>}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{sec.gs.map(productCard)}</div>
+              </section>
+            )
+          })}
+        </div>
 
         <Card title="Mișcări recente" pad={false}>
           {moves.length === 0 ? (
@@ -352,14 +461,18 @@ export default function StockPage() {
       <Modal
         open={newOpen}
         onClose={() => setNewOpen(false)}
-        title="Produs nou în stoc"
+        title={addTo ? `Role noi · ${addTo}` : 'Produs nou în stoc'}
         subtitle="Rolele se identifică prin număr — se preiau automat în fișa mașinii."
         width="max-w-xl"
         footer={
           <>
             <Button onClick={() => setNewOpen(false)}>Anulează</Button>
             <Button variant="primary" onClick={saveItem}>
-              Adaugă produs
+              {isRollForm
+                ? Number(form.count) > 1
+                  ? `Adaugă ${Math.floor(Number(form.count))} role`
+                  : 'Adaugă rola'
+                : 'Adaugă produs'}
             </Button>
           </>
         }
@@ -405,13 +518,41 @@ export default function StockPage() {
               ))}
             </datalist>
           </Field>
-          <Field label={`Cantitate inițială (${form.unit})`}>
-            <Input
-              type="number"
-              value={form.qty}
-              onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
-            />
-          </Field>
+          {isRollForm ? (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Lungime rolă (m)" hint="Implicit 15 m.">
+                <Input
+                  type="number"
+                  min={1}
+                  value={form.rollLength}
+                  onChange={(e) => setForm((f) => ({ ...f, rollLength: e.target.value }))}
+                />
+              </Field>
+              <Field
+                label="Câte role"
+                hint={
+                  Number(form.count) > 1
+                    ? `#${form.rollNumber} – #${incRollNumber(form.rollNumber, Math.floor(Number(form.count)) - 1)}`
+                    : `#${form.rollNumber}`
+                }
+              >
+                <Input
+                  type="number"
+                  min={1}
+                  value={form.count}
+                  onChange={(e) => setForm((f) => ({ ...f, count: e.target.value }))}
+                />
+              </Field>
+            </div>
+          ) : (
+            <Field label={`Cantitate inițială (${form.unit})`}>
+              <Input
+                type="number"
+                value={form.qty}
+                onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
+              />
+            </Field>
+          )}
         </div>
 
         {/* restul câmpurilor stau pliate: de obicei totul e în denumire sau vine din preset */}
@@ -542,21 +683,21 @@ export default function StockPage() {
       </Modal>
 
       {/* ajustare pe telefon: cantitatea finală, nu o diferență de calculat în cap */}
-      <Sheet
+      <Modal
         open={!!sheetItem}
         onClose={() => setSheetItem(null)}
-        title={sheetItem?.name}
+        title={sheetItem ? `${sheetItem.name} · #${sheetItem.rollNumber || '—'}` : ''}
         subtitle={
           sheetItem
-            ? `${sheetItem.maker} · #${sheetItem.rollNumber || '—'} · în stoc ${sheetItem.qty}${sheetItem.unit}`
+            ? `${sheetItem.maker}${sheetItem.location ? ` · ${sheetItem.location}` : ''} · în stoc ${sheetItem.qty}${sheetItem.unit}${isRollCategory(sheetItem.category) ? ` din ${rollLength(sheetItem)}` : ''}`
             : undefined
         }
         footer={
           <>
-            <Button className="min-h-[44px] flex-1" onClick={() => setSheetItem(null)}>
+            <Button className="min-h-[44px] flex-1 md:min-h-0 md:flex-none" onClick={() => setSheetItem(null)}>
               Anulează
             </Button>
-            <Button variant="primary" className="min-h-[44px] flex-1" onClick={saveSheet}>
+            <Button variant="primary" className="min-h-[44px] flex-1 md:min-h-0 md:flex-none" onClick={saveSheet}>
               Salvează
             </Button>
           </>
@@ -613,56 +754,19 @@ export default function StockPage() {
 
             <button
               onClick={() => {
-                if (!confirm(`Ștergi ${sheetItem.name}?`)) return
+                if (!confirm(`Ștergi ${sheetItem.name} #${sheetItem.rollNumber}?`)) return
                 removeStockItem(sheetItem.id)
                 setSheetItem(null)
               }}
               className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg border border-line text-[14px] font-semibold text-rose"
             >
-              <IconTrash width={15} height={15} /> Șterge produsul
+              <IconTrash width={15} height={15} />{' '}
+              {isRollCategory(sheetItem.category) ? 'Șterge rola' : 'Șterge lotul'}
             </button>
           </div>
         )}
-      </Sheet>
-
-      {/* modal ajustare */}
-      <Modal
-        open={!!adjust}
-        onClose={() => setAdjust(null)}
-        title={adjust?.sign === 1 ? 'Adaugă în stoc' : 'Scade din stoc'}
-        subtitle={adjust ? `${adjust.item.maker} ${adjust.item.name} · rola #${adjust.item.rollNumber}` : ''}
-        footer={
-          <>
-            <Button onClick={() => setAdjust(null)}>Anulează</Button>
-            <Button variant="primary" onClick={applyAdjust}>
-              Confirmă
-            </Button>
-          </>
-        }
-      >
-        <div className="grid grid-cols-1 gap-4">
-          <Field label={`Cantitate (${adjust?.item.unit ?? ''})`} required>
-            <Input type="number" value={adjustQty} onChange={(e) => setAdjustQty(e.target.value)} />
-          </Field>
-          <Field label="Motiv">
-            <Input
-              value={adjustReason}
-              onChange={(e) => setAdjustReason(e.target.value)}
-              placeholder={adjust?.sign === 1 ? 'Recepție marfă' : 'Consum / rebut'}
-            />
-          </Field>
-          {adjust && (
-            <p className="text-[13px] text-fg-mute">
-              Stoc curent {adjust.item.qty}
-              {adjust.item.unit} →{' '}
-              <span className="font-mono font-bold text-brand-400">
-                {Math.max(0, adjust.item.qty + adjust.sign * Number(adjustQty || 0))}
-                {adjust.item.unit}
-              </span>
-            </p>
-          )}
-        </div>
       </Modal>
+
     </>
   )
 }

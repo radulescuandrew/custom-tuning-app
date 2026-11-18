@@ -14,6 +14,7 @@ import TimeOffPage from './pages/TimeOffPage'
 import ReportsPage from './pages/ReportsPage'
 import SettingsPage from './pages/SettingsPage'
 import TrackingPage from './pages/TrackingPage'
+import DocumentPage from './pages/DocumentPage'
 import AziPage from './pages/AziPage'
 import { canSeeTimeOff, useCurrentUser } from './data/store'
 import { useIsDesktop } from './hooks/useMediaQuery'
@@ -34,6 +35,7 @@ export default function App() {
     <HashRouter>
       <Routes>
         <Route path="/tracking/:token" element={<TrackingPage />} />
+        <Route path="/documente/:id/:doc" element={<DocumentPage />} />
         <Route element={<AppLayout />}>
           <Route index element={<Landing />} />
           <Route path="azi" element={<AziPage />} />

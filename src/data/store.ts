@@ -6,9 +6,13 @@ import type {
   DB,
   ID,
   Job,
+  JobEvent,
+  JobEventKind,
   JobPhoto,
   JobStatus,
   Notification,
+  NotificationChannel,
+  NotificationKind,
   Role,
   ServiceEntry,
   Settings,
@@ -18,9 +22,10 @@ import type {
   TimeOffType,
 } from './types'
 import { buildSeed, defaultSettings } from './seed'
-import { estimateRounded, serviceDef } from './serviceCatalog'
-import { addBusinessDays, businessDaysBetween, uid } from '@/lib/utils'
-import { addDays, addMonths, differenceInCalendarDays, parseISO } from 'date-fns'
+import { ceramicUses } from './ceramics'
+import { estimateRounded, serviceDef, serviceLabel } from './serviceCatalog'
+import { addBusinessDays, businessDaysBetween, fmtDate, fmtDateTime, uid } from '@/lib/utils'
+import { addDays, addMonths, differenceInCalendarDays, parseISO, setHours, startOfDay } from 'date-fns'
 
 const CURRENT_USER = 'Cosmin'
 
@@ -37,7 +42,9 @@ interface Actions {
 
   addClient: (c: Omit<Client, 'id' | 'createdAt'>) => Client
   updateClient: (id: ID, patch: Partial<Client>) => void
-  removeClient: (id: ID) => void
+  /** oferta: „ștergerea unui client cu păstrarea istoricului” */
+  archiveClient: (id: ID) => void
+  restoreClient: (id: ID) => void
 
   addCar: (c: Omit<Car, 'id' | 'createdAt'>) => Car
   updateCar: (id: ID, patch: Partial<Car>) => void
@@ -66,6 +73,10 @@ interface Actions {
   setJobStatus: (id: ID, status: JobStatus) => void
   addJobPhoto: (id: ID, photo: JobPhoto) => void
   removeJobPhoto: (jobId: ID, photoId: ID) => void
+  updateJobPhoto: (jobId: ID, photoId: ID, patch: Partial<JobPhoto>) => void
+  /** un serviciu e gata: se marchează, se atașează pozele „după” și mesajul pentru client */
+  completeService: (jobId: ID, serviceId: ID, data: { note: string; photos: JobPhoto[] }) => void
+  reopenService: (jobId: ID, serviceId: ID) => void
 
   addStockItem: (s: Omit<StockItem, 'id' | 'createdAt'>) => StockItem
   updateStockItem: (id: ID, patch: Partial<StockItem>) => void
@@ -73,8 +84,12 @@ interface Actions {
   adjustStock: (id: ID, delta: number, reason: string, jobId?: ID | null) => void
   /** aplică toate consumurile de rolă neaplicate ale unei lucrări */
   applyRollUsages: (jobId: ID) => number
+  /** scade din stoc câte o sticlă pentru fiecare produs ceramic bifat în fișe (o singură dată) */
+  consumeCeramics: (jobId: ID) => void
 
   /** pornește execuția: marchează ora reală de start și trece în „În lucru” */
+  /** mașina a ajuns în atelier — se confirmă de mână, nu la crearea programării */
+  markReceived: (id: ID) => void
   startExecution: (id: ID) => void
   /** oprește execuția: marchează ora reală de final și trece în „Finalizat” */
   finishExecution: (id: ID) => void
@@ -85,7 +100,13 @@ interface Actions {
   updateTimeOff: (id: ID, patch: Partial<TimeOff>) => void
   removeTimeOff: (id: ID) => void
 
-  scheduleRetouch: (jobId: ID) => void
+  scheduleRetouch: (jobId: ID, from?: Date) => void
+  /** adaugă un eveniment în istoricul lucrării, semnat de utilizatorul curent */
+  logEvent: (jobId: ID, kind: JobEventKind, label: string, detail?: string) => void
+  /** mesajul „mașina e gata de ridicat” — intră în coada de notificări */
+  schedulePickup: (jobId: ID, opts?: { message?: string; channel?: NotificationChannel }) => void
+  /** retuș făcut: se anulează mesajele de retuș încă netrimise */
+  markRetouchDone: (jobId: ID) => void
   scheduleDetailingFollowUp: (jobId: ID) => void
   markNotificationSent: (id: ID) => void
   cancelNotification: (id: ID) => void
@@ -97,7 +118,7 @@ export type Store = DB & { toasts: Toast[] } & Actions
 const STATUS_LABEL: Record<JobStatus, string> = {
   programat: 'Programat',
   in_lucru: 'În lucru',
-  asteapta_piese: 'Așteaptă piese',
+  blocat: 'Blocat',
   finalizat: 'Finalizat',
   predat: 'Predat',
   anulat: 'Anulat',
@@ -108,14 +129,25 @@ export const statusLabel = (s: JobStatus) => STATUS_LABEL[s]
 export const STATUS_FLOW: JobStatus[] = [
   'programat',
   'in_lucru',
-  'asteapta_piese',
+  'blocat',
   'finalizat',
   'predat',
 ]
 
 export const useStore = create<Store>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      /** cine e logat — semnează evenimentele din istoric */
+      const who = () => get().staff.find((x) => x.id === get().currentUserId)?.name ?? CURRENT_USER
+      const ev = (label: string, kind: JobEventKind, detail?: string): JobEvent => ({
+        id: uid(),
+        at: new Date().toISOString(),
+        label,
+        by: who(),
+        kind,
+        ...(detail ? { detail } : {}),
+      })
+      return {
       ...buildSeed(),
       toasts: [],
 
@@ -135,11 +167,15 @@ export const useStore = create<Store>()(
       },
       updateClient: (id, patch) =>
         set((s) => ({ clients: s.clients.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
-      removeClient: (id) =>
+      archiveClient: (id) =>
         set((s) => ({
-          clients: s.clients.filter((c) => c.id !== id),
-          cars: s.cars.filter((c) => c.clientId !== id),
-          jobs: s.jobs.filter((j) => j.clientId !== id),
+          clients: s.clients.map((c) =>
+            c.id === id ? { ...c, archivedAt: new Date().toISOString() } : c,
+          ),
+        })),
+      restoreClient: (id) =>
+        set((s) => ({
+          clients: s.clients.map((c) => (c.id === id ? { ...c, archivedAt: null } : c)),
         })),
 
       addCar: (c) => {
@@ -167,9 +203,11 @@ export const useStore = create<Store>()(
             get().settings,
             get().cars.find((c) => c.id === j.carId)?.bodyType,
           )
-        const workStartAt = j.workStartAt ?? j.startAt
-        const workEndAt =
-          j.workEndAt ?? new Date(new Date(workStartAt).getTime() + estimateMin * 60_000).toISOString()
+        // null = execuția se planifică mai târziu (după primire); doar câmpul lipsă primește implicit primirea
+        const workStartAt = j.workStartAt === undefined ? j.startAt : j.workStartAt
+        const workEndAt = workStartAt
+          ? (j.workEndAt ?? new Date(new Date(workStartAt).getTime() + estimateMin * 60_000).toISOString())
+          : null
         const job: Job = {
           ...j,
           estimateMin,
@@ -184,7 +222,11 @@ export const useStore = create<Store>()(
           completedAt: null,
           trackingToken: uid().slice(0, 10),
           events: [
-            { id: uid(), at: new Date().toISOString(), label: 'Programare creată', by: CURRENT_USER },
+            ev(
+              'Programare creată',
+              'create',
+              `${j.services.map((x) => serviceLabel(x)).join(' + ')} · primire ${fmtDateTime(j.startAt)}`,
+            ),
           ],
         }
         set((s) => ({ jobs: [job, ...s.jobs] }))
@@ -209,28 +251,104 @@ export const useStore = create<Store>()(
                   ...j,
                   status,
                   completedAt: status === 'finalizat' || status === 'predat' ? j.completedAt ?? now : null,
+                  handedOverAt: status === 'predat' ? j.handedOverAt ?? now : null,
                   events: [
                     ...j.events,
-                    { id: uid(), at: now, label: `Status → ${STATUS_LABEL[status]}`, by: CURRENT_USER },
+                    ev(
+                      `Status → ${STATUS_LABEL[status]}`,
+                      'status',
+                      status === 'blocat' ? job.blockedReason : undefined,
+                    ),
                   ],
                 }
               : j,
           ),
         }))
         if (status === 'finalizat') {
-          get().scheduleRetouch(id)
+          get().consumeCeramics(id)
+          if (get().settings.pickupNotifyAuto) get().schedulePickup(id)
           get().scheduleDetailingFollowUp(id)
         }
+        // oferta: retușul pornește după ce clientul a ridicat mașina
+        if (status === 'predat') get().scheduleRetouch(id)
       },
 
       addJobPhoto: (id, photo) =>
         set((s) => ({
-          jobs: s.jobs.map((j) => (j.id === id ? { ...j, photos: [...j.photos, photo] } : j)),
+          jobs: s.jobs.map((j) => {
+            if (j.id !== id) return j
+            const last = j.events[j.events.length - 1]
+            const label = photo.serviceId ? 'Poze adăugate la serviciu' : 'Poze adăugate la primire'
+            const recent =
+              last?.kind === 'photo' && last.label === label && Date.now() - Date.parse(last.at) < 10 * 60_000
+            const count = recent ? Number(last.detail?.match(/\d+/)?.[0] ?? 1) + 1 : 1
+            const event = { ...(recent ? last : ev(label, 'photo')), detail: `${count} ${count === 1 ? 'poză' : 'poze'}` }
+            return {
+              ...j,
+              photos: [...j.photos, photo],
+              events: recent ? [...j.events.slice(0, -1), event] : [...j.events, event],
+            }
+          }),
         })),
       removeJobPhoto: (jobId, photoId) =>
         set((s) => ({
           jobs: s.jobs.map((j) =>
             j.id === jobId ? { ...j, photos: j.photos.filter((p) => p.id !== photoId) } : j,
+          ),
+        })),
+      completeService: (jobId, serviceId, { note, photos }) => {
+        const now = new Date().toISOString()
+        const job = get().jobs.find((j) => j.id === jobId)
+        const svc = job?.services.find((x) => x.id === serviceId)
+        if (!job || !svc) return
+        set((s) => ({
+          jobs: s.jobs.map((j) =>
+            j.id !== jobId
+              ? j
+              : {
+                  ...j,
+                  services: j.services.map((x) =>
+                    x.id === serviceId ? { ...x, done: true, doneAt: now, doneNote: note } : x,
+                  ),
+                  photos: [...j.photos, ...photos],
+                  events: [
+                    ...j.events,
+                    ev(
+                      `Serviciu finalizat: ${serviceLabel(svc)}`,
+                      'service',
+                      [note, photos.length ? `${photos.length} poze pentru client` : ''].filter(Boolean).join(' · ') ||
+                        undefined,
+                    ),
+                  ],
+                },
+          ),
+        }))
+        const left = get().jobs.find((j) => j.id === jobId)!.services.filter((x) => !x.done).length
+        get().toast(
+          left
+            ? `${serviceLabel(svc)} finalizat — mai ${left === 1 ? 'e 1 serviciu' : `sunt ${left} servicii`}`
+            : 'Toate serviciile sunt gata — poți trece lucrarea în „Finalizat”',
+        )
+      },
+      reopenService: (jobId, serviceId) =>
+        set((s) => ({
+          jobs: s.jobs.map((j) =>
+            j.id !== jobId
+              ? j
+              : {
+                  ...j,
+                  services: j.services.map((x) =>
+                    x.id === serviceId ? { ...x, done: false, doneAt: null } : x,
+                  ),
+                },
+          ),
+        })),
+      updateJobPhoto: (jobId, photoId, patch) =>
+        set((s) => ({
+          jobs: s.jobs.map((j) =>
+            j.id === jobId
+              ? { ...j, photos: j.photos.map((p) => (p.id === photoId ? { ...p, ...patch } : p)) }
+              : j,
           ),
         })),
 
@@ -242,6 +360,38 @@ export const useStore = create<Store>()(
       updateStockItem: (id, patch) =>
         set((s) => ({ stock: s.stock.map((i) => (i.id === id ? { ...i, ...patch } : i)) })),
       removeStockItem: (id) => set((s) => ({ stock: s.stock.filter((i) => i.id !== id) })),
+
+      consumeCeramics: (jobId) => {
+        const job = get().jobs.find((j) => j.id === jobId)
+        if (!job) return
+        const now = new Date().toISOString()
+        const used: string[] = []
+        const missing: string[] = []
+        const services = job.services.map((svc) => {
+          if (svc.kind !== 'ceramica') return svc
+          const usages = [...svc.rollUsages]
+          for (const u of ceramicUses(svc, get().stock)) {
+            // deja scăzut la o finalizare anterioară (ex. redeschidere + refinalizare)
+            if (u.item && usages.some((x) => x.stockItemId === u.item!.id && x.appliedAt)) continue
+            if (!u.item) {
+              missing.push(u.product)
+              continue
+            }
+            get().adjustStock(u.item.id, -1, `Consum lucrare ${job.code}`, job.id)
+            usages.push({ id: uid(), stockItemId: u.item.id, qty: 1, appliedAt: now })
+            used.push(u.product)
+          }
+          return { ...svc, rollUsages: usages }
+        })
+        if (!used.length && !missing.length) return
+        set((s) => ({ jobs: s.jobs.map((j) => (j.id === jobId ? { ...j, services } : j)) }))
+        if (used.length) {
+          get().logEvent(jobId, 'stock', 'Ceramice scăzute din stoc', used.map((p) => `${p} −1 buc`).join(' · '))
+          get().toast(`Ceramice scăzute din stoc: ${used.join(', ')}`, 'ok')
+        }
+        if (missing.length)
+          get().toast(`Nu sunt în stoc (nu s-a scăzut nimic): ${missing.join(', ')}`, 'info')
+      },
 
       adjustStock: (id, delta, reason, jobId = null) =>
         set((s) => ({
@@ -266,14 +416,18 @@ export const useStore = create<Store>()(
         const job = get().jobs.find((j) => j.id === jobId)
         if (!job) return 0
         let applied = 0
+        const lines: string[] = []
         job.services.forEach((svc) => {
           svc.rollUsages.forEach((u) => {
             if (u.appliedAt || !u.stockItemId || u.qty <= 0) return
+            const it = get().stock.find((x) => x.id === u.stockItemId)
+            if (it) lines.push(`${it.name} #${it.rollNumber} −${u.qty} ${it.unit}`)
             get().adjustStock(u.stockItemId, -u.qty, `Consum lucrare ${job.code}`, job.id)
             applied++
           })
         })
         if (!applied) return 0
+        get().logEvent(jobId, 'stock', 'Consum folie scăzut din stoc', lines.join(' · '))
         const now = new Date().toISOString()
         set((s) => ({
           jobs: s.jobs.map((j) =>
@@ -293,10 +447,30 @@ export const useStore = create<Store>()(
         return applied
       },
 
+      markReceived: (id) => {
+        const now = new Date().toISOString()
+        set((s) => ({
+          jobs: s.jobs.map((j) =>
+            j.id === id && !j.receivedAt
+              ? {
+                  ...j,
+                  receivedAt: now,
+                  events: [
+                    ...j.events,
+                    ev('Mașină primită în atelier', 'reception', `programată pentru ${fmtDateTime(j.startAt)}`),
+                  ],
+                }
+              : j,
+          ),
+        }))
+      },
+
       startExecution: (id) => {
         const now = new Date().toISOString()
         const job = get().jobs.find((j) => j.id === id)
         if (!job) return
+        // execuția nu poate începe fără mașină: dacă primirea n-a fost confirmată, o confirmăm acum
+        if (!jobReceivedAt(job)) get().markReceived(id)
         set((s) => ({
           jobs: s.jobs.map((j) =>
             j.id === id
@@ -307,7 +481,11 @@ export const useStore = create<Store>()(
                   workStartAt: j.workStartAt ?? now,
                   events: [
                     ...j.events,
-                    { id: uid(), at: now, label: 'Execuție începută', by: CURRENT_USER },
+                    ev(
+                      'Execuție începută',
+                      'work',
+                      j.workStartAt ? `planificată pentru ${fmtDateTime(j.workStartAt)}` : undefined,
+                    ),
                   ],
                 }
               : j,
@@ -327,7 +505,13 @@ export const useStore = create<Store>()(
                   workEndAt: j.workEndAt ?? now,
                   events: [
                     ...j.events,
-                    { id: uid(), at: now, label: 'Execuție finalizată', by: CURRENT_USER },
+                    ev(
+                      'Execuție finalizată',
+                      'work',
+                      j.actualStartAt
+                        ? `efectiv ${((Date.parse(now) - Date.parse(j.actualStartAt)) / 3_600_000).toFixed(1)} h · estimat ${(j.estimateMin / 60).toFixed(1)} h`
+                        : undefined,
+                    ),
                   ],
                 }
               : j,
@@ -354,8 +538,11 @@ export const useStore = create<Store>()(
         set((s) => ({ timeOff: s.timeOff.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
       removeTimeOff: (id) => set((s) => ({ timeOff: s.timeOff.filter((t) => t.id !== id) })),
 
-      /** Spec: notificare SMS retuș la 7 zile lucrătoare + reminder după încă 3 zile. */
-      scheduleRetouch: (jobId) => {
+      /**
+       * Oferta: a doua zi după ridicare pleacă „Te așteptăm la retuș în decurs de 7 zile”;
+       * dacă retușul nu e marcat făcut, la 3 zile după cele 7 pleacă reminderul.
+       */
+      scheduleRetouch: (jobId, from = new Date()) => {
         const job = get().jobs.find((j) => j.id === jobId)
         if (!job) return
         const needsRetouch = job.services.some((s: ServiceEntry) => serviceDef(s.kind).retouch)
@@ -363,11 +550,11 @@ export const useStore = create<Store>()(
         const already = get().notifications.some(
           (n) => n.jobId === jobId && n.kind === 'retus_7z' && n.status !== 'anulata',
         )
-        if (already) return
+        if (already || job.retouchDoneAt) return
 
-        const base = new Date()
-        const first = addBusinessDays(base, 7)
-        const second = addDays(first, 3)
+        const at10 = (d: Date) => setHours(startOfDay(d), 10)
+        const first = at10(addDays(from, 1))
+        const second = at10(addDays(addBusinessDays(from, 7), 3))
         const mk = (kind: Notification['kind'], dueAt: Date, message: string): Notification => ({
           id: uid(),
           jobId,
@@ -384,17 +571,79 @@ export const useStore = create<Store>()(
             mk(
               'retus_7z',
               first,
-              `Custom Tuning: folia aplicată pe ${job.code} are nevoie de retuș. Te așteptăm în atelier în următoarele zile — 0722 000 000.`,
+              `Custom Tuning: Te așteptăm la retuș în decurs de 7 zile pentru lucrarea ${job.code}. Sună-ne pentru o oră care ți se potrivește.`,
             ),
             mk(
               'retus_reminder_3z',
               second,
-              `Custom Tuning: reamintire — retușul foliei este încă disponibil pentru ${job.code}. Te așteptăm!`,
+              `Custom Tuning: Ai uitat de retuș? Te așteptăm la retuș pentru oferirea garanției lucrării ${job.code}.`,
             ),
             ...s.notifications,
           ],
         }))
-        get().toast('Notificări retuș programate (7 zile lucrătoare + reminder)', 'info')
+        get().logEvent(
+          jobId,
+          'retouch',
+          'Retuș programat',
+          `SMS invitație pe ${fmtDate(first.toISOString())} · reminder pe ${fmtDate(second.toISOString())} dacă nu vine`,
+        )
+        get().toast('Retuș programat: SMS mâine + reminder dacă nu vine în 7 zile', 'info')
+      },
+
+      schedulePickup: (jobId, opts = {}) => {
+        const job = get().jobs.find((j) => j.id === jobId)
+        if (!job) return
+        const already = get().notifications.some(
+          (n) => n.jobId === jobId && n.kind === 'ridicare' && n.status !== 'anulata',
+        )
+        if (already) return
+        const car = get().cars.find((c) => c.id === job.carId)
+        set((s) => ({
+          notifications: [
+            {
+              id: uid(),
+              jobId,
+              clientId: job.clientId,
+              kind: 'ridicare',
+              channel: opts.channel ?? 'sms',
+              dueAt: new Date().toISOString(),
+              status: 'programata',
+              message: opts.message ?? pickupMessage(job, car),
+              sentAt: null,
+            },
+            ...s.notifications,
+          ],
+        }))
+        get().logEvent(
+          jobId,
+          'notify',
+          'Client anunțat: mașina e gata de ridicat',
+          `${(opts.channel ?? 'sms').toUpperCase()} · „${opts.message ?? pickupMessage(job, car)}”`,
+        )
+        get().toast('Clientul va fi anunțat că poate ridica mașina', 'info')
+      },
+
+      markRetouchDone: (jobId) => {
+        const now = new Date().toISOString()
+        set((s) => ({
+          jobs: s.jobs.map((j) =>
+            j.id === jobId
+              ? {
+                  ...j,
+                  retouchDoneAt: now,
+                  events: [...j.events, ev('Retuș efectuat', 'retouch', 'mesajele de retuș netrimise au fost anulate')],
+                }
+              : j,
+          ),
+          notifications: s.notifications.map((n) =>
+            n.jobId === jobId &&
+            n.status === 'programata' &&
+            (n.kind === 'retus_7z' || n.kind === 'retus_reminder_3z')
+              ? { ...n, status: 'anulata' }
+              : n,
+          ),
+        }))
+        get().toast('Retuș marcat efectuat — reminderul a fost anulat')
       },
 
       /**
@@ -434,12 +683,15 @@ export const useStore = create<Store>()(
         get().toast('Invitație detailing programată la 6 luni (−10%)', 'info')
       },
 
-      markNotificationSent: (id) =>
+      markNotificationSent: (id) => {
+        const n = get().notifications.find((x) => x.id === id)
         set((s) => ({
-          notifications: s.notifications.map((n) =>
-            n.id === id ? { ...n, status: 'trimisa', sentAt: new Date().toISOString() } : n,
+          notifications: s.notifications.map((x) =>
+            x.id === id ? { ...x, status: 'trimisa', sentAt: new Date().toISOString() } : x,
           ),
-        })),
+        }))
+        if (n) get().logEvent(n.jobId, 'notify', `Mesaj trimis: ${NOTIF_KIND_LABEL[n.kind]}`, n.channel.toUpperCase())
+      },
       cancelNotification: (id) =>
         set((s) => ({
           notifications: s.notifications.map((n) =>
@@ -448,10 +700,16 @@ export const useStore = create<Store>()(
         })),
       addNotification: (n) =>
         set((s) => ({ notifications: [{ ...n, id: uid() }, ...s.notifications] })),
-    }),
+
+      logEvent: (jobId, kind, label, detail) =>
+        set((s) => ({
+          jobs: s.jobs.map((j) => (j.id === jobId ? { ...j, events: [...j.events, ev(label, kind, detail)] } : j)),
+        })),
+      }
+    },
     {
       name: 'custom-tuning-mvp',
-      version: 6,
+      version: 10,
       partialize: ({
         clients,
         cars,
@@ -476,9 +734,14 @@ export const useStore = create<Store>()(
         currentUserId,
       }),
       /** Schema s-a schimbat de mai multe ori în MVP — pornim de la seed curat sub v5.
-       *  v5 → v6: setările primesc durate de manoperă + factori pe tip de mașină. */
+       *  v5 → v6: setările primesc durate de manoperă + factori pe tip de mașină.
+       *  v6 → v7: setarea de anunțare la ridicare (câmpurile noi de pe lucrare sunt opționale).
+       *  v7 → v8: „Așteaptă piese” devine „Blocat” (cu motiv).
+       *  v8 → v9: stoc pe role individuale — se reîncarcă datele demo. */
       migrate: (persisted, version) => {
-        if (version < 5) return buildSeed()
+        // v9: stocul se ține pe role individuale de 15 m — datele demo vechi nu se pot converti
+        // v10: istoric demo pe 12 luni pentru rapoarte — se reîncarcă datele demo
+        if (version < 10) return buildSeed()
         const p = persisted as Store
         return { ...p, settings: { ...defaultSettings(), ...p.settings } }
       },
@@ -494,7 +757,31 @@ export const useJob = (id?: ID) => useStore((s) => s.jobs.find((j) => j.id === i
 export const clientName = (c?: Client) =>
   !c ? '—' : c.type === 'pj' && c.companyName ? c.companyName : `${c.lastName} ${c.firstName}`.trim()
 
+/** Clienții activi — cei arhivați nu apar în liste, căutare și selecții. */
+export const activeClients = (cs: Client[]) => cs.filter((c) => !c.archivedAt)
+
 export const carName = (c?: Car) => (!c ? '—' : `${c.make} ${c.model}`)
+
+/**
+ * Când a ajuns mașina în atelier. Lucrările vechi (fără câmp) care au trecut deja de
+ * „Programat” sunt considerate primite la ora programată / la începerea execuției.
+ */
+export const jobReceivedAt = (j: Job): string | null =>
+  j.receivedAt ??
+  (j.status === 'programat' || j.status === 'anulat' ? null : (j.actualStartAt ?? j.startAt))
+
+/** Textul implicit al mesajului „mașina e gata de ridicat”. */
+export const pickupMessage = (job: Job, car?: Car) =>
+  `Custom Tuning: lucrarea ${job.code} este gata! ${car ? `${car.make} ${car.model} (${car.plate})` : 'Mașina ta'} te așteaptă în atelier, L–V 09:00–18:00.`
+
+/** Etichetele tipurilor de notificare — aceleași în fișa lucrării, Notificări și Dashboard. */
+export const NOTIF_KIND_LABEL: Record<NotificationKind, string> = {
+  ridicare: 'Mașina e gata de ridicat',
+  retus_7z: 'Invitație retuș · a doua zi după predare',
+  retus_reminder_3z: 'Reminder retuș · la 3 zile după cele 7',
+  detailing_6l: 'Invitație detailing · 6 luni · −10%',
+  custom: 'Notificare',
+}
 
 export const jobTotal = (j: Job) => j.services.reduce((sum, s) => sum + (s.price || 0), 0)
 

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="paint" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e9ebee"/>
+      <stop offset=".5" stop-color="#c4c8ce"/>
+      <stop offset="1" stop-color="#8b9098"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="#202226"/>
+  <!-- ușă -->
+  <path d="M0 40 H800 V330 H0 Z" fill="url(#paint)"/>
+  <path d="M0 150 H800" stroke="#9aa0a7" stroke-width="3"/>
+  <rect x="520" y="190" width="120" height="22" rx="11" fill="#2a2c30"/>
+  <path d="M380 40 V330" stroke="#6f747c" stroke-width="3"/>
+  <!-- prag -->
+  <path d="M0 330 H800 V420 Q790 450 760 452 H40 Q10 450 0 420 Z" fill="#17181b"/>
+  <path d="M0 338 H800" stroke="#3a3c41" stroke-width="3"/>
+  <!-- zgârieturi pe prag -->
+  <g stroke="#b9bdc3" stroke-linecap="round">
+    <path d="M190 400 L360 380" stroke-width="3"/>
+    <path d="M205 414 L340 398" stroke-width="2"/>
+    <path d="M260 372 L300 368" stroke-width="2.5"/>
+  </g>
+  <rect y="452" width="800" height="148" fill="#0d0e10"/>
+  <ellipse cx="275" cy="393" rx="125" ry="52" fill="none" stroke="#e02a2a" stroke-width="7" stroke-dasharray="18 10"/>
+  <circle cx="420" cy="345" r="20" fill="#e02a2a"/>
+  <text x="420" y="353" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#fff">4</text>
+</svg>
